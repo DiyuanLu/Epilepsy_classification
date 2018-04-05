@@ -8,8 +8,10 @@ import multiprocessing
 import os
 import sys
 from functools import partial
+import matplotlib.pyplot as plt
+import ipdb
 
-def find_files(directory, pattern='*.csv', withlabel=False):
+def find_files(directory, pattern='*.csv', withlabel=True):
     '''fine all the files in one directory and assign '1'/'0' to F or N files'''
     files = []
     for root, dirnames, filenames in os.walk(directory):
@@ -74,3 +76,42 @@ def PCA_plot(pca_fit):
         fig = plt.figure(data=data, layout=layout)
         plt.plot(fig)
 
+def plot_learning_curve(train_scores, test_scores, title="Learning curve", save_name="learning curve"):
+    '''plot smooth learning curve
+    train_scores: n_samples * n_features
+    test_scores: n_samples * n_features
+    '''
+    plt.figure()
+    plt.title(title)
+    train_sizes = len(train_scores)
+    plt.xlabel("training batches")
+    plt.ylabel("accuracy")
+    train_scores_mean = np.mean(train_scores, axis=1)
+    train_scores_std = np.std(train_scores, axis=1)
+    test_scores_mean = np.mean(test_scores, axis=1)
+    test_scores_std = np.std(test_scores, axis=1)
+    plt.grid()
+    plt.fill_between(np.arange(train_sizes), train_scores_mean - train_scores_std,
+                    train_scores_mean + train_scores_std, alpha=0.3,color="m")
+    plt.fill_between(np.arange(train_sizes), test_scores_mean - test_scores_std,
+                     test_scores_mean + test_scores_std, alpha=0.4, color="c")
+    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="r",
+             label="Training score")
+    plt.plot(np.arange(train_sizes), test_scores_mean, '-', color="g",
+             label="Cross-validation score")
+
+    plt.legend(loc="best")
+    plt.savefig(save_name, format="png")
+    plt.close()
+
+def plot_smooth_shadow_curve(data, title="Loss during training", save_name="loss"):
+    '''plot a smooth version of noisy data with mean and std as shadow
+    data: n_samples * n_trials'''
+    data_mean = np.mean(data, axis=1)
+    data_std = np.std(data, axis=1)
+    sizes = data.shape[0]
+    plt.grid()
+    plt.fill_between(np.arange(sizes), data_mean - data_std, data_mean + data_std, alpha=0.5, color="c")
+    plt.plot(np.arange(sizes), data_mean, '-', color="b")
+    plt.savefig(save_name, format="png")
+    plt.close()
