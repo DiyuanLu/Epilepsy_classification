@@ -20,7 +20,7 @@ if not os.path.exists(logdir):
 if not os.path.exists(resultdir ):
     os.makedirs(resultdir )
 print resultdir
-plot_every = 50
+plot_every = 500
 save_every = 500
 seq_len = 640
 batch_size = 16
@@ -28,7 +28,7 @@ n_outputs1 = 1000
 n_outputs2 = 500
 n_outputs3 = 300
 n_classes = 2
-total_batches =  1000
+total_batches =  10000
 
 def get_test_data(data_dir):
     with tf.name_scope("test_data"):
@@ -142,17 +142,19 @@ def train(x):
 
     trials = 2
     with tf.Session() as sess:
-        sess.run(tf.global_variables_initializer())
-        sess.run(iter.initializer)
-        loss_trial_train = np.zeros([total_batches, trials])
+        loss_trial_train = np.zeros([total_batches, trials])    # tracking loss
         acc_trial_train = np.zeros([total_batches, trials])
         acc_trial_test = np.zeros([total_batches, trials])
-        
         test_data, test_labels = get_test_data(data_dir_test)
+        outlier = [] 
         for trial in range(trials):
+            np.random.seed(1998745)
+            sess.run(iter.initializer)   # every trial restart training
+            sess.run(tf.global_variables_initializer())
             acc_total_train = np.array([])
             acc_total_test = np.array([])
             loss_total_train = np.array([])
+            # track the outlier files
             for batch in range(total_batches):
                 filename =  sess.run(ele)   # name, '1'/'0'
                 batch_data = np.empty([0, seq_len])
@@ -165,6 +167,8 @@ def train(x):
                 batch_labels =  np.eye((n_classes))[batch_labels.astype(int)]   # get one-hot lable 
                 _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels})
                 ### record loss and accuracy
+                if acc < 4:
+                    outlier.append(filename)
                 acc_total_train = np.append(acc_total_train, acc)
                 acc_total_test = np.append(acc_total_test, accuracy.eval({x:test_data, y:test_labels}))
                 loss_total_train = np.append(loss_total_train, c)
@@ -173,25 +177,13 @@ def train(x):
                     saver.save(sess, logdir + '/batch' + str(batch))
                     
                 if batch % plot_every== 0 :
-                    plt.figure()
-                    plt.plot(loss_total_train, 'c-')
-                    plt.xlabel("training time")
-                    plt.ylabel("loss")
-                    plt.ylim([0.01, 1.0])
-                    plt.savefig(resultdir + "/loss_batch_{}".format(batch))
-                    plt.close()
-                    
-                    plt.figure()
-                    plt.plot(acc_total_test, 'm-')
-                    plt.xlabel("training time")
-                    plt.ylabel("test accuracy")
-                    plt.ylim([0.0, 1.0])
-                    plt.savefig(resultdir + "/test_acc_batch_{}".format(batch))
-                    plt.close()
+                    func.plotdata(loss_total_train, color='c', ylabel="loss", save_name=resultdir + "/loss_batch_{}".format(batch))
+                    func.plotdata(acc_total_test, color='m', ylabel="accuracy", save_name=resultdir + "/test_acc_batch_{}".format(batch))
             acc_trial_train[:, trial] = acc_total_train
             loss_trial_train[:, trial] = loss_total_train
             acc_trial_test[:, trial] = acc_total_test
-        ipdb.set_trace()
+        # save outliers files name
+        np.savetxt(resultdir + "/outlier_files" + ".csv", outliers, delimiter=',')
         func.plot_learning_curve(acc_trial_train, acc_trial_test, save_name=resultdir + "/learning_curve")
         func.plot_smooth_shadow_curve(loss_trial_train, save_name=resultdir + "/loss_in_training")
         

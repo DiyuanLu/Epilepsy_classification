@@ -95,7 +95,7 @@ def plot_learning_curve(train_scores, test_scores, title="Learning curve", save_
                     train_scores_mean + train_scores_std, alpha=0.3,color="m")
     plt.fill_between(np.arange(train_sizes), test_scores_mean - test_scores_std,
                      test_scores_mean + test_scores_std, alpha=0.4, color="c")
-    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="r",
+    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="b",
              label="Training score")
     plt.plot(np.arange(train_sizes), test_scores_mean, '-', color="g",
              label="Cross-validation score")
@@ -113,5 +113,20 @@ def plot_smooth_shadow_curve(data, title="Loss during training", save_name="loss
     plt.grid()
     plt.fill_between(np.arange(sizes), data_mean - data_std, data_mean + data_std, alpha=0.5, color="c")
     plt.plot(np.arange(sizes), data_mean, '-', color="b")
+    plt.ylim([0.0, 10])
     plt.savefig(save_name, format="png")
+    plt.close()
+
+def plotdata(data, color='c', xlabel="training time", ylabel="loss", save_name="save"):
+    '''
+    data: 1D array '''
+    plt.figure()
+    plt.plot(data, color)
+    plt.xlabel(xlabel)
+    plt.ylabel(ylabel)
+    if ylabel == 'accuracy':
+        plt.ylim([0.0, 1.2])
+    elif ylabel == 'loss':
+        plt.ylim([0.0, 10])
+    plt.savefig(save_name + "_{}".format(ylabel))
     plt.close()
