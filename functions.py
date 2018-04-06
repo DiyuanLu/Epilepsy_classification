@@ -10,6 +10,8 @@ import sys
 from functools import partial
 import matplotlib.pyplot as plt
 import ipdb
+import random
+
 
 def find_files(directory, pattern='*.csv', withlabel=True):
     '''fine all the files in one directory and assign '1'/'0' to F or N files'''
@@ -24,7 +26,7 @@ def find_files(directory, pattern='*.csv', withlabel=True):
                 files.append((os.path.join(root, filename), label))
             else:  # only get names
                 files.append(os.path.join(root, filename))
-                    
+    random.shuffle(files)
     return files
 
 def read_data(filename ):
@@ -92,13 +94,13 @@ def plot_learning_curve(train_scores, test_scores, title="Learning curve", save_
     test_scores_std = np.std(test_scores, axis=1)
     plt.grid()
     plt.fill_between(np.arange(train_sizes), train_scores_mean - train_scores_std,
-                    train_scores_mean + train_scores_std, alpha=0.3,color="m")
+                    train_scores_mean + train_scores_std, alpha=0.2,color="m")
     plt.fill_between(np.arange(train_sizes), test_scores_mean - test_scores_std,
-                     test_scores_mean + test_scores_std, alpha=0.4, color="c")
-    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="b",
+                     test_scores_mean + test_scores_std, alpha=0.25, color="c")
+    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="r",
              label="Training score")
     plt.plot(np.arange(train_sizes), test_scores_mean, '-', color="g",
-             label="Cross-validation score")
+             label="Test score")
 
     plt.legend(loc="best")
     plt.savefig(save_name, format="png")
@@ -111,9 +113,9 @@ def plot_smooth_shadow_curve(data, title="Loss during training", save_name="loss
     data_std = np.std(data, axis=1)
     sizes = data.shape[0]
     plt.grid()
-    plt.fill_between(np.arange(sizes), data_mean - data_std, data_mean + data_std, alpha=0.5, color="c")
+    plt.fill_between(np.arange(sizes), data_mean - data_std, data_mean + data_std, alpha=0.3, color="c")
     plt.plot(np.arange(sizes), data_mean, '-', color="b")
-    plt.ylim([0.0, 10])
+    plt.ylim([0.0, 2.])
     plt.savefig(save_name, format="png")
     plt.close()
 
@@ -125,8 +127,8 @@ def plotdata(data, color='c', xlabel="training time", ylabel="loss", save_name="
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     if ylabel == 'accuracy':
-        plt.ylim([0.0, 1.2])
+        plt.ylim([0.0, 1.05])
     elif ylabel == 'loss':
-        plt.ylim([0.0, 10])
+        plt.ylim([0.0, 1.0])
     plt.savefig(save_name + "_{}".format(ylabel))
     plt.close()
