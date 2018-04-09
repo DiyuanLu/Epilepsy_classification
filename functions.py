@@ -13,7 +13,7 @@ import matplotlib.pyplot as plt
 import random
 
 
-def find_files(directory, pattern='*.txt', withlabel=True):
+def find_files(directory, pattern='*.csv', withlabel=True):
     '''fine all the files in one directory and assign '1'/'0' to F or N files'''
     files = []
     for root, dirnames, filenames in os.walk(directory):

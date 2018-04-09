@@ -17,24 +17,25 @@ mnist = input_data.read_data_sets("data/MNIST_data/",  one_hot=True)
 
 SAVE_EVERY = 20000
 plot_every = 5000
-version = "EEG_ds16"
+version = "MNIST"     ###"VAE_ds16"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-logdir = "model/" + version + '/' + datetime
 results_dir = "results/" + version + '/' + datetime
+logdir = results_dir  + "/model" 
+
 data_dir = "data/sub_train/sub_16"
-data_dir_test = "data/sub_test"
+data_dir_test = "data/sub_test/sub_16"
 
 num_iterations = 1000001   # 50
 recording_interval = 1000    # 1000   #
 ### Hyperparams
-in_dim = 28 * 28#640
+seq_len = 28 * 28#   640     #
 hid_dim1 = 1000   # Encoder: input -- hidden1 -- latent1 -- hidden2 -- latent2 
 hid_dim2 = 500
 latent_dim = 50
 batch_size = 100
 
 def get_test_data():
-    test_data = np.empty([0, in_dim])
+    test_data = np.empty([0, seq_len])
     test_labels = np.empty([0])
     for filen in files_test:
         data = np.average(func.read_data(filen[0]), axis=0)
@@ -55,103 +56,55 @@ def bias_variable(shape, name):
 def FC_Layer(X, W, b):
     return tf.matmul(X, W) + b
 
+#### input
+with tf.name_scope("input"):
+    ## the real data from database
+    inputs_enc = tf.placeholder(tf.float32, [None, seq_len], name='inputs_enc')
+    ## random noise to reconstruct the real data
+    #inputs_dec = tf.placeholder(tf.float32, [None, latent_dim1], name='inputs_dec')
+
 ############################ Encoder ############################
-def encoder(real_data):
-    """def encoder_net(x, latent_dim, h_dim):
-    Construct an inference network parametrizing a Gaussian.
-    Args:
-    x: A batch of real data (MNIST digits).
-    latent_dim: The latent dimensionality.
-    hidden_size: The size of the neural net hidden layers.
-    Returns:
-    mu: Mean parameters for the variational family Normal
-    sigma: Standard deviation parameters for the variational family Normal
-    """
-    h_dim_1, latent_dim_1, h_dim_2, latent_dim_2 = 1000, 200, 300, 50 #
-    
-    with tf.variable_scope('enc') as scope:
-        # layer 1
-        W_enc_1 = weight_variables([n_pixels, h_dim_1], "W_enc_1")
-        b_enc_1 = bias_variable([h_dim_1], "b_enc_1")
+def encoder(inputs_enc):
+    # layer 1
+    with tf.name_scope('Encoder'):
+        W_enc = weight_variables([seq_len, hid_dim2], "W_enc")
+        b_enc = bias_variable([hid_dim2], "b_enc")
         # tanh - activation function        avoid vanishing gradient in generative models
-        h_enc_1 = tf.nn.tanh(FC_Layer(real_data, W_enc_1, b_enc_1))
+        h_enc = tf.nn.tanh(FC_Layer(inputs_enc, W_enc, b_enc))
 
         # layer 2   Output mean and std of the latent variable distribution
-        W_mu_1 = weight_variables([h_dim_1, latent_dim_1], "W_mu_1")
-        b_mu_1 = bias_variable([latent_dim_1], "b_mu_1")
-        mu_1 = FC_Layer(h_enc_1, W_mu_1, b_mu_1)
+        W_mu = weight_variables([hid_dim2, latent_dim], "W_mu")
+        b_mu = bias_variable([latent_dim], "b_mu")
+        mu = FC_Layer(h_enc, W_mu, b_mu)
 
-        W_logstd_1 = weight_variables([h_dim_1, latent_dim_1], "W_logstd_1")
-        b_logstd_1 = bias_variable([latent_dim_1], "b_logstd_1")
-        logstd_1 = FC_Layer(h_enc_1, W_logstd_1, b_logstd_1)
+        W_logstd = weight_variables([hid_dim2, latent_dim], "W_logstd")
+        b_logstd = bias_variable([latent_dim], "b_logstd")
+        logstd = FC_Layer(h_enc, W_logstd, b_logstd)
 
-        # Reparameterize import Randomness
-        noise = tf.random_normal([1, latent_dim_1])
-        # z_1 is the fisrt leverl output(latent variable) of our Encoder
-        z_1 = mu_1 + tf.multiply(noise, tf.exp(0.5*logstd_1))
-
-        # second level---------------------------- layer 1
-        W_enc_2 = weight_variables([latent_dim_1, h_dim_2], "W_enc_2")
-        b_enc_2 = bias_variable([h_dim_2], "b_enc_2")
-        # tanh - activation function        avoid vanishing gradient in generative models
-        h_enc_2 = tf.nn.tanh(FC_Layer(z_1, W_enc_2, b_enc_2))
-
-        # layer 2   Output mean and std of the latent variable distribution
-        W_mu_2 = weight_variables([h_dim_2, latent_dim_2], "W_mu_2")
-        b_mu_2 = bias_variable([latent_dim_2], "b_mu_2")
-        mu_2 = FC_Layer(h_enc_2, W_mu_2, b_mu_2)
-
-        W_logstd_2 = weight_variables([h_dim_2, latent_dim_2], "W_logstd_2")
-        b_logstd_2 = bias_variable([latent_dim_2], "b_logstd_2")
-        logstd_2 = FC_Layer(h_enc_2, W_logstd_2, b_logstd_2)
 
         # Reparameterize import Randomness
-        noise_2 = tf.random_normal([1, latent_dim_2])
-        # z_1 is the ultimate output(latent variable) of our Encoder
-        z_2 = mu_2 + tf.multiply(noise_2, tf.exp(0.5*logstd_2))
-
-        return mu_1, logstd_1, mu_2, logstd_2, z_1
+        noise = tf.random_normal([1, latent_dim])
+        # z is the ultimate output(latent variable) of our Encoder
+        z = mu + tf.multiply(noise, tf.exp(0.5*logstd))
+        return mu, logstd, z
 
 ############################ Dencoder ############################
-def decoder(random_input, z_1):
-    """Build a generative network parametrizing the likelihood of the data
-    Args:
-    z: Samples of latent variables with size latent_dim_2
-    hidden_size: Size of the hidden state of the neural net
-    Returns:
-    reconstruction: logits for the Bernoulli likelihood of the data
-    """
-    h_dim_1, latent_dim_1, h_dim_2, latent_dim_2 = 1000, 200, 300, 50 # channel num
-
-    with tf.variable_scope('dec') as scope:
-        # layer 1
-        W_dec_2 = weight_variables([latent_dim_2, h_dim_2], "W_dec_2")
-        b_dec_2 = bias_variable([h_dim_2], "b_dec_2")
+def decoder(inputs_dec):
+    '''Z: random_input 1d(latent_dim,)'''
+    # layer 1
+    with tf.name_scope('Decoder'):
+        W_dec = weight_variables([latent_dim, hid_dim2], "W_dec")
+        b_dec = bias_variable([hid_dim2], "b_dec")
         # tanh - decode the latent representation
-        h_dec_2 = tf.nn.tanh(FC_Layer(random_input, W_dec_2, b_dec_2))
-
-        # layer2 - reconstruction the first leverl latent variables
-        W_rec_2 = weight_variables([h_dim_2, latent_dim_1], "W_dec_2")
-        b_rec_2 = bias_variable([latent_dim_1], "b_rec_2")
-        recon_z1 = tf.nn.sigmoid(FC_Layer(h_dec_2, W_rec_2, b_rec_2)) # ?????
-
-        # layer 1
-        W_dec_1 = weight_variables([latent_dim_1, h_dim_1], "W_dec")
-        b_dec_1 = bias_variable([h_dim_1], "b_dec")
-        # tanh - decode the latent representation
-
-        #ipdb.set_trace()
-        residual_z1 = tf.identity(z_1) + recon_z1
-        h_dec_1 = tf.nn.tanh(FC_Layer(residual_z1 , W_dec_1, b_dec_1))
+        h_dec = tf.nn.tanh(FC_Layer(inputs_dec, W_dec, b_dec))
 
         # layer2 - reconstruction the image and output 0 or 1
-        W_rec_1 = weight_variables([h_dim_1, n_pixels], "W_rec_1")
-        b_rec_1 = bias_variable([n_pixels], "b_rec_1")
+        W_rec = weight_variables([hid_dim2, seq_len], "W_dec")
+        b_rec = bias_variable([seq_len], "b_rec")
         # 784 bernoulli parameter Output
-        reconstruction = tf.nn.sigmoid(FC_Layer(h_dec_1, W_rec_1, b_rec_1))
-
+        reconstruction = tf.nn.sigmoid(FC_Layer(h_dec, W_rec, b_rec))
         return reconstruction
-        
+  
 ## Variational Autoencoder
 #def encoder(inputs_enc):
     #"""def encoder_net(x, latent_dim, h_dim):
@@ -194,7 +147,7 @@ def decoder(random_input, z_1):
 #def decoder(inputs_dec):
     #"""Build a generative network parametrizing the likelihood of the data
     #Args:
-    #z: Samples of latent variables with size latent_dim_2
+    #inputs_dec: Samples of latent variables with size latent_dim_2
     #hidden_size: Size of the hidden state of the neural net
     #Returns:
     #reconstruction: logits for the Bernoulli likelihood of the data
@@ -213,47 +166,36 @@ def decoder(random_input, z_1):
 
         #reconstruction = tf.contrib.layers.fully_connected(
                                                                             #dec_hidden1,
-                                                                            #in_dim,
+                                                                            #seq_len,
                                                                             #activation_fn=tf.nn.sigmoid)
         #return reconstruction
 
-def train():
+def train(input_enc):
     #### Get data
-    files_train = func.find_files(data_dir, withlabel=True )### traverse all the files in the dir, and divide into batches, from
-    files_test = func.find_files(data_dir_test, withlabel=True )### traverse all the files in the dir, and divide into batches, from
-    file_tensor_train = tf.convert_to_tensor(files_train, dtype=tf.string)## convert to tensor
-    dataset = tf.data.Dataset.from_tensor_slices(file_tensor_train).repeat().batch(batch_size).shuffle(buffer_size=10000)
-    ## create the iterator
-    iter = dataset.make_initializable_iterator()
-    ele = iter.get_next()   #you get the filename
-
-    ##### input
-    with tf.name_scope("input"):
-        ### the real data from database
-        inputs_enc = tf.placeholder(tf.float32, [None, in_dim], name='inputs_enc')
-        ### random noise to reconstruct the real data
-        inputs_dec = tf.placeholder(tf.float32, [None, latent_dim1], name='inputs_dec')
+    #files_train = func.find_files(data_dir, withlabel=True )### traverse all the files in the dir, and divide into batches, from
+    #files_test = func.find_files(data_dir_test, withlabel=True)### traverse all the files in the dir, and divide into batches, from
+    #file_tensor_train = tf.convert_to_tensor(files_train, dtype=tf.string)## convert to tensor
+    #dataset = tf.data.Dataset.from_tensor_slices(file_tensor_train).repeat().batch(batch_size).shuffle(buffer_size=10000)
+    ### create the iterator
+    #iter = dataset.make_initializable_iterator()
+    #ele = iter.get_next()   #you get the filename
         
     ### Graph    
-    mu_1, sigma_1 = encoder(inputs_enc)
-    ##Repsarameterize import Randomness
-    noise = tf.random_normal([1, latent_dim])
-     ##z_1 is the fisrt leverl output(latent variable) of our Encoder
-    inputs_dec = mu_1 + tf.multiply(noise, tf.exp(0.5*sigma_1))
-    reconstruction = decoder(inputs_dec)
+    mu_1, sigma_1, z = encoder(inputs_enc)
+    reconstruction = decoder(z)
     
     # Loss function = reconstruction error + regularization(similar image's latent representation close)
     with tf.name_scope('loss'):
-        log_loss = tf.reduce_sum(inputs_enc  * tf.log(reconstruction + 1e-9) + (1 - inputs_enc ) * tf.log(1 - reconstruction + 1e-9))
-
+        Log_loss = tf.reduce_sum(inputs_enc  * tf.log(reconstruction + 1e-9) + (1 - inputs_enc ) * tf.log(1 - reconstruction + 1e-9))
         KL_loss = -0.5 * tf.reduce_sum(1 + 2*sigma_1 - tf.pow(mu_1, 2) - tf.exp(2 * sigma_1), reduction_indices=1)
 
-        VAE_loss = tf.reduce_mean(log_loss + KL_loss)
-        
+        VAE_loss = tf.reduce_mean(Log_loss + KL_loss)
+        test_loss = tf.Variable(0.0)
     #Outputs a Summary protocol buffer containing a single scalar value.
     tf.summary.scalar('VAE_loss', VAE_loss)
-    tf.summary.scalar('KL_loss1', KL_loss)
-    tf.summary.scalar('log_loss1', log_loss)
+    tf.summary.scalar('KL_loss1', tf.reduce_mean(KL_loss))
+    tf.summary.scalar('Log_loss1', tf.reduce_mean(Log_loss))
+    test_loss_sum = tf.summary.scalar('test_loss', test_loss)
 
     optimizer = tf.train.AdadeltaOptimizer().minimize(-VAE_loss)
 
@@ -267,7 +209,7 @@ def train():
     init = tf.global_variables_initializer()
     sess = tf.InteractiveSession()
     sess.run(init)
-    sess.run(iter.initializer)
+    #sess.run(iter.initializer)
     ## Add ops to save and restore all the variables.
     saver = tf.train.Saver()
 
@@ -275,54 +217,59 @@ def train():
     variational_lower_bound_array = []
     log_loss_array = []
     KL_loss_array = []
-    iteration_array = [i*recording_interval for i in range(num_iterations/recording_interval)]
+    #iteration_array = [i*recording_interval for i in range(num_iterations/recording_interval)]
 
     ### get the real data
-    
-    
-    for i in range(num_iterations):
-        train_noise = np.random.uniform(-1.0, 1.0, size=[batch_size, latent_dim1]).astype(np.float32)
-        filename =  sess.run(ele)   # name, '1'/'0'
-        batch_data = np.empty([0, in_dim ])
-        for ind in range(len(filename)):
-            data = np.average(func.read_data(filename[ind][0]), axis=0)
-            batch_data = np.vstack((batch_data, data))
-            ipdb.set_trace()          
+    for batch in range(num_iterations):
+        batch_data = np.round(mnist.train.next_batch(100)[0])
+        #filename =  sess.run(ele)   # name, '1'/'0'
+        #batch_data = np.empty([0, seq_len ])
+        #for ind in range(len(filename)):
+            #data = np.average(func.read_data(filename[ind][0]), axis=0)
+            #batch_data = np.vstack((batch_data, data))      
         #batch_data = np.round(mnist.train.next_batch(batch_size)[0])
-        save_name = results_dir + '/' + "_step{}_".format(i)
+        save_name = results_dir + '/' + "_step{}_".format( batch)
         #run our optimizer on our data
-        _, reconstruction_batch, log_loss_batch, KL_loss_batch, VAE_loss_batch = sess.run([optimizer, reconstruction, log_loss, KL_loss, VAE_loss], feed_dict={inputs_enc: batch_data, inputs_dec : train_noise})
-        
-        if (i % 100 == 0):
+        sess.run(optimizer, feed_dict={inputs_enc: batch_data})
+        if batch % 10 == 0:    # less noisy summary
+            summary = sess.run(summaries, feed_dict={inputs_enc: batch_data})
+            writer.add_summary(summary,  batch)
+
+        ### test
+        if (batch % 100 == 0):
+            test_data = mnist.test.images[0:50]
+            ##test_data = np.empty([0, seq_len])
+            ##for ind in range(len(files_test)):
+                ##data = np.average(func.read_data(files_test[ind][0]), axis=0)
+                ##test_data = np.vstack((test_data, data))
+            vae_temp = VAE_loss.eval({input_enc : test_data})
+            summary = sess.run(test_loss_sum, {test_loss: vae_temp})    ## add test score to summary
+            writer.add_summary(summary, batch)
             #every 1K iterations record these values
-            vlb_eval = VAE_loss.eval(feed_dict={inputs_enc: batch_data, inputs_dec : train_noise})
+            vlb_eval = VAE_loss.eval(feed_dict={inputs_enc: batch_data})
+            variational_lower_bound_array.append(vlb_eval )
+            temp_log = np.mean(Log_loss.eval(feed_dict={inputs_enc: batch_data}))
+            log_loss_array.append( temp_log)
+            temp_KL = np.mean(KL_loss.eval(feed_dict={inputs_enc: batch_data}))
+            KL_loss_array.append(temp_KL)
+        if batch % 200 == 0:
+            print "Iteration: {}, Loss: {}, log_loss: {}, KL_term{}".format(batch, vlb_eval, temp_log, temp_KL )
+        
+        if (batch % 100 == 0):
+            saver.save(sess, logdir + '/' + str(batch))
             
-            variational_lower_bound_array.append(VAE_loss_batch)
-            temp_log = np.mean(log_loss.eval(feed_dict={inputs_enc: batch_data, inputs_dec : train_noise}))
-            log_loss_array.append( log_loss_batch)
-            temp_KL = np.mean(KL_loss.eval(feed_dict={inputs_enc: batch_data, inputs_dec : train_noise}))
-            KL_loss_array.append(KL_loss_batch)
-            print "Iteration: {}, Loss: {}, log_loss: {}, KL_term{}".format(i, vlb_eval, temp_log, temp_KL )
-
-        #if (i % 10000 == 0):
-            #if not os.path.exists(logdir):
-                #os.makedirs(logdir)
-            #saver.save(sess, logdir + '/' + str(i))
-            
-
-        #if (i % plot_every == 0):
+        if (batch % 1000 == 0):
             ##plot_prior(model_No)
-            #plot_test(i, save_name=save_name)
+            #plot_test(batch, save_name=save_name)
             
-            #plt.figure()
-            ##for the number of iterations we had 
-            ##plot these 3 terms
-            #plt.plot(iteration_array, variational_lower_bound_array)
-            #plt.plot(iteration_array, KL_loss_array)
-            #plt.plot(iteration_array, log_loss_array)
-            #plt.legend(['Variational Lower Bound', 'KL divergence', 'Log Likelihood'], bbox_to_anchor=(1.05, 1), loc=2)
-            #plt.title('Loss per iteration')
-            #plt.savefig(save_name+"_iter{}_loss.png".format(i), format="png")
+            plt.figure()
+            plt.plot(np.arange(len(variational_lower_bound_array)), variational_lower_bound_array)
+            plt.plot(np.arange(len(KL_loss_array)), KL_loss_array)
+            plt.plot( np.arange(len(log_loss_array)), log_loss_array)
+            plt.legend(['Variational Lower Bound', 'KL divergence', 'Log Likelihood'], loc="best")
+            plt.title('Loss per batch')
+            plt.savefig(save_name+"loss_iter{}_loss.png".format(batch), format="png")
+            plt.close()
 
 if __name__ == "__main__":
-    train()
+    train(inputs_enc)

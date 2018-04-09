@@ -203,6 +203,7 @@ def train(X):
         x_batch = np.round(mnist.train.next_batch(200)[0])
         #run our optimizer on our data
         _, summary = sess.run([optimizer, summaries], feed_dict={X: x_batch})
+        writer.add_summary(summary, batch)
         if (i % recording_interval == 0):
             #every 1K iterations record these value
             temp_vae = np.mean(VAE_loss.eval(feed_dict={X: x_batch}))
