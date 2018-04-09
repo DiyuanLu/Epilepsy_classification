@@ -26,7 +26,7 @@ def find_files(directory, pattern='*.txt', withlabel=True):
                 files.append((os.path.join(root, filename), label))
             else:  # only get names
                 files.append(os.path.join(root, filename))
-    #random.shuffle(files)
+    random.shuffle(files)   # randomly shuffle the files
     return files
 
 def read_data(filename ):
@@ -101,12 +101,12 @@ def plot_learning_curve(train_scores, test_scores, title="Learning curve", save_
     test_scores_std = np.std(test_scores, axis=1)
     plt.grid()
     plt.fill_between(np.arange(train_sizes), train_scores_mean - train_scores_std,
-                    train_scores_mean + train_scores_std, alpha=0.2,color="m")
+                    train_scores_mean + train_scores_std, alpha=0.25,color="m")
     plt.fill_between(np.arange(train_sizes), test_scores_mean - test_scores_std,
                      test_scores_mean + test_scores_std, alpha=0.25, color="c")
-    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="r",
+    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="m",
              label="Training score")
-    plt.plot(np.arange(train_sizes), test_scores_mean, '-', color="g",
+    plt.plot(np.arange(train_sizes), test_scores_mean, '-', color="c",
              label="Test score")
 
     plt.legend(loc="best")
@@ -140,7 +140,9 @@ def plotdata(data, color='c', xlabel="training time", ylabel="loss", save_name="
     plt.savefig(save_name + "_{}".format(ylabel))
     plt.close()
 
+def save_data(data, save_name="save_data"):
+    '''save data into a .csv file'''
 
-if __name__ == "__main__":
-    data_dir = "data/train_data"
-    multiprocessing_func(data_dir)
+#if __name__ == "__main__":
+    #data_dir = "data/train_data"
+    #multiprocessing_func(data_dir)

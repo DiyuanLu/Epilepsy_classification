@@ -10,6 +10,9 @@ from statsmodels.tsa.seasonal import seasonal_decompose
 import functions as func
 import modules as mod
 import ipdb
+import time
+
+
 
 data_dir = "data/train_data"
 data_dir_test = "data/test_data"
@@ -22,10 +25,10 @@ if not os.path.exists(logdir):
 if not os.path.exists(resultdir ):
     os.makedirs(resultdir )
 print resultdir
-plot_every = 1000
-save_every = 1000
+plot_every = 500
+save_every = 500
 seq_len = 1280
-batch_size = 64   # old: 16
+batch_size = 32   # old: 16
 n_classes = 2
 epochs = 50
 total_batches =  epochs * 3000 // batch_size
@@ -78,18 +81,19 @@ def train(x):
     #outputs = mod.CNN2(x, seq_len=seq_len)
     outputs = mod.CNN(x, seq_len=seq_len)
     with tf.name_scope("loss"):
-        cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y))
+        cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
-        correct = tf.equal(tf.argmax(outputs, 1), tf.argmax(y, 1))
-        accuracy = tf.reduce_mean(tf.cast(correct, "float32"))
+        correct = tf.equal(tf.argmax(outputs, 1), tf.argmax(y, 1), name="correct")
+        accuracy = tf.reduce_mean(tf.cast(correct, "float32"), name="accuracy")
+        #test_acc = tf.placeholder(tf.float32, name="test_acc")    # track acc in test
+        test_acc = tf.Variable(0.0)
+        tf.summary.scalar('loss', cost)
+        tf.summary.scalar('accuracy', accuracy)
+        test_acc_sum = tf.summary.scalar('test_accuracy', test_acc)
 
     optimizer = tf.train.AdamOptimizer().minimize(cost)
     #optimizer = tf.train.GradientDescentOptimizer(0.001).minimize(cost)
-    test_acc = tf.Variable(0., name="test_acc")
-    tf.summary.scalar('loss', cost)
-    tf.summary.scalar('accuracy', accuracy)
-    tf.summary.scalar('test_accuracy', test_acc)
-
+    
     #################### Set up logging for TensorBoard.
     writer = tf.summary.FileWriter(logdir)
     writer.add_graph(tf.get_default_graph())
@@ -97,12 +101,12 @@ def train(x):
     summaries = tf.summary.merge_all()
     saver = tf.train.Saver(max_to_keep= 20)
 
-    trials = 2
+    trials = 1
     with tf.Session() as sess:
         loss_trial_train = np.zeros([total_batches, trials])    # tracking loss
         acc_trial_train = np.zeros([total_batches, trials])
         acc_trial_test = np.zeros([total_batches, trials])
-        test_data, test_labels = get_test_data(data_dir_test)
+        #test_data, test_labels = get_test_data(data_dir_test)
         outliers = []
         for trial in range(trials):
             #np.random.seed(1998745)
@@ -114,10 +118,11 @@ def train(x):
             loss_total_train = np.array([])
             # track the outlier files
             for batch in range(total_batches):
-                if batch % 250 == 0:
+                if batch % 100 == 0:
                     print "trial: ", trial, "batch",batch
                 filename =  sess.run(ele)   # name, '1'/'0'
                 filename_test =  sess.run(ele_test)   # name, '1'/'0'
+
                 batch_data = np.empty([0, seq_len])
                 batch_labels = np.empty([0])
                 for ind in range(len(filename)):
@@ -127,6 +132,7 @@ def train(x):
                 batch_labels =  np.eye((n_classes))[batch_labels.astype(int)]   # get one-hot lable
 
                 _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels})
+                writer.add_summary(summary, batch)
                 ### record loss and accuracy
                 if acc < 0.35:
                     outliers.append(filename)
@@ -139,10 +145,14 @@ def train(x):
                     test_data = np.vstack((test_data, data))
                     test_labels = np.append(test_labels, filename_test[ind][1])
                 test_labels =  np.eye((n_classes))[test_labels.astype(int)]   # get one-hot lable
-                test_acc = accuracy.eval({x:test_data, y:test_labels})
-                acc_total_test = np.append(acc_total_test, test_acc)
-                loss_total_train = np.append(loss_total_train, c)
+                
+                test_temp = accuracy.eval({x:test_data, y:test_labels})
+                summary = sess.run(test_acc_sum, {test_acc: test_temp})    ## add test score to summary
                 writer.add_summary(summary, batch)
+                
+                acc_total_test = np.append(acc_total_test, test_temp)
+                loss_total_train = np.append(loss_total_train, c)
+                
                 if batch % save_every == 0:
                     saver.save(sess, logdir + '/batch' + str(batch))
 
