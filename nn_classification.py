@@ -28,7 +28,7 @@ print resultdir
 plot_every = 500
 save_every = 500
 seq_len = 1280
-batch_size = 32   # old: 16
+batch_size = 50  # old: 16
 n_classes = 2
 epochs = 50
 total_batches =  epochs * 3000 // batch_size
@@ -83,13 +83,19 @@ def train(x):
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
+        predictions = tf.argmax(outputs, 1)
         correct = tf.equal(tf.argmax(outputs, 1), tf.argmax(y, 1), name="correct")
         accuracy = tf.reduce_mean(tf.cast(correct, "float32"), name="accuracy")
         #test_acc = tf.placeholder(tf.float32, name="test_acc")    # track acc in test
+        accuracy_per_class = tf.metrics.mean_per_class_accuracy(tf.argmax(outputs, 1), tf.argmax(y, 1), n_classes, name='accuracy_per_class')
         test_acc = tf.Variable(0.0)
+        test_fp_ratio = accuracy_per_class[1][1, 1] / tf.sum(accuracy_per_class[1])   ## false_positive / batch_size
+        test_tp_ratio = accuracy_per_class[1][1, 0] / tf.sum(accuracy_per_class[1])   ## true_positive / batch_size
         tf.summary.scalar('loss', cost)
         tf.summary.scalar('accuracy', accuracy)
         test_acc_sum = tf.summary.scalar('test_accuracy', test_acc)
+        test_fp_ratio_sum = tf.summary.scalar('test_fp_ratio', test_fp_ratio)
+        test_tp_ratio_sum = tf.summary.scalar('test_tp_ratio', test_tp_ratio)
 
     optimizer = tf.train.AdamOptimizer().minimize(cost)
     #optimizer = tf.train.GradientDescentOptimizer(0.001).minimize(cost)
@@ -113,6 +119,7 @@ def train(x):
             sess.run(iter.initializer)   # every trial restart training
             sess.run(iter_test.initializer)   # every trial restart training
             sess.run(tf.global_variables_initializer())
+            sess.run(tf.local_variables_initializer())
             acc_total_train = np.array([])
             acc_total_test = np.array([])
             loss_total_train = np.array([])
@@ -130,8 +137,9 @@ def train(x):
                     batch_data = np.vstack((batch_data, data))
                     batch_labels = np.append(batch_labels, filename[ind][1])
                 batch_labels =  np.eye((n_classes))[batch_labels.astype(int)]   # get one-hot lable
-
-                _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels})
+                ipdb.set_trace()
+                _, acc, c, apc, pred, summary = sess.run([optimizer, accuracy, cost, accuracy_per_class, predictions, summaries], feed_dict={x: batch_data, y: batch_labels})
+                #_, acc, c, pred, summary = sess.run([optimizer, accuracy, cost, outputs, summaries], feed_dict={x: batch_data, y: batch_labels})
                 writer.add_summary(summary, batch)
                 ### record loss and accuracy
                 if acc < 0.35:
@@ -145,7 +153,7 @@ def train(x):
                     test_data = np.vstack((test_data, data))
                     test_labels = np.append(test_labels, filename_test[ind][1])
                 test_labels =  np.eye((n_classes))[test_labels.astype(int)]   # get one-hot lable
-                
+                ipdb.set_trace()
                 test_temp = accuracy.eval({x:test_data, y:test_labels})
                 summary = sess.run(test_acc_sum, {test_acc: test_temp})    ## add test score to summary
                 writer.add_summary(summary, batch)

@@ -116,12 +116,15 @@ def plot_learning_curve(train_scores, test_scores, title="Learning curve", save_
 def plot_smooth_shadow_curve(data, title="Loss during training", save_name="loss"):
     '''plot a smooth version of noisy data with mean and std as shadow
     data: n_samples * n_trials'''
-    data_mean = np.mean(data, axis=1)
-    data_std = np.std(data, axis=1)
+    data_smooth = smooth(data, window=21)
+    data_smooth = data_smooth.shape[0]
+    #data_mean = np.mean(data, axis=1)
+    #data_std = np.std(data, axis=1)
     sizes = data.shape[0]
     plt.grid()
-    plt.fill_between(np.arange(sizes), data_mean - data_std, data_mean + data_std, alpha=0.3, color="c")
-    plt.plot(np.arange(sizes), data_mean, '-', color="b")
+    plt.fill_between(np.arange(sizes), data_smooth - data_std, data_smooth + data_std, alpha=0.3, color="c")
+    plt.plot(np.arange(sizes), data_smooth, '-', color="b")
+    plt.title(title)
     plt.ylim([0.0, 2.])
     plt.savefig(save_name, format="png")
     plt.close()
@@ -143,6 +146,47 @@ def plotdata(data, color='c', xlabel="training time", ylabel="loss", save_name="
 def save_data(data, save_name="save_data"):
     '''save data into a .csv file'''
 
+def smooth(x,window_len=11,window='hanning'):
+    """smooth the data using a window with requested size.
+    
+    This method is based on the convolution of a scaled window with the signal.
+    The signal is prepared by introducing reflected copies of the signal 
+    (with the window size) in both ends so that transient parts are minimized
+    in the begining and end part of the output signal.
+    
+    input:
+        x: the input signal 
+        window_len: the dimension of the smoothing window; should be an odd integer
+        window: the type of window from 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'
+            flat window will produce a moving average smoothing.
+    output:
+        the smoothed signal
+
+    TODO: the window parameter could be the window itself if an array instead of a string
+    NOTE: length(output) != length(input), to correct this: return y[(window_len/2-1):-(window_len/2)] instead of just y.
+    """
+
+    if x.ndim != 1:
+        raise ValueError, "smooth only accepts 1 dimension arrays."
+
+    if x.size < window_len:
+        raise ValueError, "Input vector needs to be bigger than window size."
+
+    if window_len<3:
+        return x
+
+    if not window in ['flat', 'hanning', 'hamming', 'bartlett', 'blackman']:
+        raise ValueError, "Window is on of 'flat', 'hanning', 'hamming', 'bartlett', 'blackman'"
+
+    s=np.r_[x[window_len-1:0:-1],x,x[-2:-window_len-1:-1]]
+    #print(len(s))
+    if window == 'flat': #moving average
+        w=np.ones(window_len,'d')
+    else:
+        w=eval('np.'+window+'(window_len)')
+
+    y=np.convolve(w/w.sum(),s,mode='valid')
+    return y
 #if __name__ == "__main__":
     #data_dir = "data/train_data"
     #multiprocessing_func(data_dir)
