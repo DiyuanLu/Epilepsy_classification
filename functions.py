@@ -9,11 +9,11 @@ import os
 import sys
 from functools import partial
 import matplotlib.pyplot as plt
-import ipdb
+#import ipdb
 import random
 
 
-def find_files(directory, pattern='*.csv', withlabel=True):
+def find_files(directory, pattern='*.txt', withlabel=True):
     '''fine all the files in one directory and assign '1'/'0' to F or N files'''
     files = []
     for root, dirnames, filenames in os.walk(directory):
@@ -26,7 +26,7 @@ def find_files(directory, pattern='*.csv', withlabel=True):
                 files.append((os.path.join(root, filename), label))
             else:  # only get names
                 files.append(os.path.join(root, filename))
-    random.shuffle(files)
+    #random.shuffle(files)
     return files
 
 def read_data(filename ):
@@ -47,13 +47,20 @@ def downsampling(filename, ds_factor):
     ds_y =  decimate(y, ds_factor)
     np.savetxt(os.path.splitext(filename)[0] + "ds_" + np.str(ds_factor) + ".csv", zip(ds_x, ds_y), delimiter=',', fmt="%10.5f")
 
-def multiprocessing_func():
-    data_dir = "data/sub_test"
-    files_train = find_files(data_dir, withlabel=False )
+def rename_files(files):
+    os.rename(files, os.path.splitext(files)[0] + '.csv')
+
+def remove_files(files):
+    os.remove(files)
+
+def multiprocessing_func(data_dir):
+    files_train = find_files(data_dir, pattern='*16ds_8.csv', withlabel=False )
     pool = multiprocessing.Pool()
-    for ds in [16]:
-        pool.map(partial(downsampling, ds_factor=ds), files_train)
-        print "Done!"
+    # for ds in [8]:
+    #     pool.map(partial(downsampling, ds_factor=ds), files_train)
+    #     print "Done!"
+    # print files_train
+    pool.map(remove_files, files_train)
     pool.close()
 
 def PCA_plot(pca_fit):
@@ -132,3 +139,8 @@ def plotdata(data, color='c', xlabel="training time", ylabel="loss", save_name="
         plt.ylim([0.0, 1.0])
     plt.savefig(save_name + "_{}".format(ylabel))
     plt.close()
+
+
+if __name__ == "__main__":
+    data_dir = "data/train_data"
+    multiprocessing_func(data_dir)
