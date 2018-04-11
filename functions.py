@@ -45,22 +45,29 @@ def downsampling(filename, ds_factor):
     x, y = read_data(filename)
     ds_x =  decimate(x, ds_factor)
     ds_y =  decimate(y, ds_factor)
-    np.savetxt(os.path.splitext(filename)[0] + "ds_" + np.str(ds_factor) + ".csv", zip(ds_x, ds_y), delimiter=',', fmt="%10.5f")
+    np.savetxt(os.path.dirname(filename) + "/ds_" + np.str(ds_factor)  + os.path.basename(filename) , zip(ds_x, ds_y), delimiter=',', fmt="%10.5f")
 
-def rename_files(files):
-    os.rename(files, os.path.splitext(files)[0] + '.csv')
+def rename_files(filename):
+    os.rename(filename, os.path.dirname(filename) + '/ds_16' + os.path.basename(filename))
 
-def remove_files(files):
-    os.remove(files)
+def remove_files(filename):
+    os.remove(filename)
 
 def multiprocessing_func(data_dir):
-    files_train = find_files(data_dir, pattern='*16ds_8.csv', withlabel=False )
+    filenames = find_files(data_dir, pattern='*ds_16.csv', withlabel=False )
     pool = multiprocessing.Pool()
-    # for ds in [8]:
-    #     pool.map(partial(downsampling, ds_factor=ds), files_train)
-    #     print "Done!"
-    # print files_train
-    pool.map(remove_files, files_train)
+    version = 'rename'        # 'remove'       # 'downsampling'
+    if version == 'downsampling':
+        for ds in [2]:
+            pool.map(partial(downsampling, ds_factor=ds), filenames)
+            print "Downsampling Done!"
+    elif version == 'rename':
+        pool.map(rename_files, filenames)
+        print "rename Done!"
+    elif version == 'remove':
+        pool.map(remove_files, filenames)
+        print "remove Done!"
+    
     pool.close()
 
 def PCA_plot(pca_fit):
@@ -104,11 +111,10 @@ def plot_learning_curve(train_scores, test_scores, title="Learning curve", save_
                     train_scores_mean + train_scores_std, alpha=0.25,color="m")
     plt.fill_between(np.arange(train_sizes), test_scores_mean - test_scores_std,
                      test_scores_mean + test_scores_std, alpha=0.25, color="c")
-    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="m",
+    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="indigo",
              label="Training score")
-    plt.plot(np.arange(train_sizes), test_scores_mean, '-', color="c",
+    plt.plot(np.arange(train_sizes), test_scores_mean, '-', color="teal",
              label="Test score")
-
     plt.legend(loc="best")
     plt.savefig(save_name, format="png")
     plt.close()
@@ -122,14 +128,14 @@ def plot_smooth_shadow_curve(data, title="Loss during training", save_name="loss
     #data_std = np.std(data, axis=1)
     sizes = data.shape[0]
     plt.grid()
-    plt.fill_between(np.arange(sizes), data_smooth - data_std, data_smooth + data_std, alpha=0.3, color="c")
-    plt.plot(np.arange(sizes), data_smooth, '-', color="b")
+    plt.fill_between(np.arange(sizes), data_smooth - data_std, data_smooth + data_std, alpha=0.3, color="lightskyblue")
+    plt.plot(np.arange(sizes), data_smooth, '-', color="royalblue")
     plt.title(title)
     plt.ylim([0.0, 2.])
     plt.savefig(save_name, format="png")
     plt.close()
 
-def plotdata(data, color='c', xlabel="training time", ylabel="loss", save_name="save"):
+def plotdata(data, color='darkorchid', xlabel="training time", ylabel="loss", save_name="save"):
     '''
     data: 1D array '''
     plt.figure()
@@ -187,6 +193,6 @@ def smooth(x,window_len=11,window='hanning'):
 
     y=np.convolve(w/w.sum(),s,mode='valid')
     return y
-#if __name__ == "__main__":
-    #data_dir = "data/train_data"
-    #multiprocessing_func(data_dir)
+if __name__ == "__main__":
+    data_dir = "data/train_data"
+    multiprocessing_func(data_dir)

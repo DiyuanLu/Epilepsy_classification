@@ -8,16 +8,16 @@ import matplotlib
 import os
 from scipy.misc import imsave
 #import data
-from tensorflow.examples.tutorials.mnist import input_data    # DOWNLOAD DATA
 import ipdb
 import datetime
 import functions as func
+from tensorflow.examples.tutorials.mnist import input_data    # DOWNLOAD DATA
 mnist = input_data.read_data_sets("data/MNIST_data/",  one_hot=True)
 
 
 SAVE_EVERY = 20000
 plot_every = 5000
-version = "MNIST"     ###"VAE_ds16"
+version = "vae_eeg_MNIST_bn"     ###"VAE_ds16"  #
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 results_dir = "results/" + version + '/' + datetime
 logdir = results_dir  + "/model" 
@@ -32,7 +32,7 @@ seq_len = 28 * 28#   640     #
 hid_dim1 = 1000   # Encoder: input -- hidden1 -- latent1 -- hidden2 -- latent2 
 hid_dim2 = 500
 latent_dim = 50
-batch_size = 100
+batch_size = 200
 
 def get_test_data():
     test_data = np.empty([0, seq_len])
@@ -65,12 +65,15 @@ with tf.name_scope("input"):
 
 ############################ Encoder ############################
 def encoder(inputs_enc):
-    # layer 1
+    
     with tf.name_scope('Encoder'):
+        # layer 1
         W_enc = weight_variables([seq_len, hid_dim2], "W_enc")
         b_enc = bias_variable([hid_dim2], "b_enc")
         # tanh - activation function        avoid vanishing gradient in generative models
-        h_enc = tf.nn.tanh(FC_Layer(inputs_enc, W_enc, b_enc))
+        fc = FC_Layer(inputs_enc, W_enc, b_enc)
+        bn_fc = tf.layers.batch_normalization(fc, center=True, scale=True)
+        h_enc = tf.nn.tanh(bn_fc)
 
         # layer 2   Output mean and std of the latent variable distribution
         W_mu = weight_variables([hid_dim2, latent_dim], "W_mu")
@@ -95,9 +98,12 @@ def decoder(inputs_dec):
     with tf.name_scope('Decoder'):
         W_dec = weight_variables([latent_dim, hid_dim2], "W_dec")
         b_dec = bias_variable([hid_dim2], "b_dec")
-        # tanh - decode the latent representation
-        h_dec = tf.nn.tanh(FC_Layer(inputs_dec, W_dec, b_dec))
 
+        fc_dec = FC_Layer(inputs_dec, W_dec, b_dec)
+        bn_fc_dec = tf.layers.batch_normalization(fc_dec, center=True, scale=True)
+        # tanh - decode the latent representation
+        h_dec= tf.nn.tanh(bn_fc_dec)
+    
         # layer2 - reconstruction the image and output 0 or 1
         W_rec = weight_variables([hid_dim2, seq_len], "W_dec")
         b_rec = bias_variable([seq_len], "b_rec")
@@ -186,15 +192,15 @@ def train(input_enc):
     
     # Loss function = reconstruction error + regularization(similar image's latent representation close)
     with tf.name_scope('loss'):
-        Log_loss = tf.reduce_sum(inputs_enc  * tf.log(reconstruction + 1e-9) + (1 - inputs_enc ) * tf.log(1 - reconstruction + 1e-9))
+        Log_loss = tf.reduce_sum(inputs_enc  * tf.log(reconstruction + 1e-9) + (1 - inputs_enc ) * tf.log(1 - reconstruction + 1e-9), reduction_indices=1)
         KL_loss = -0.5 * tf.reduce_sum(1 + 2*sigma_1 - tf.pow(mu_1, 2) - tf.exp(2 * sigma_1), reduction_indices=1)
-
-        VAE_loss = tf.reduce_mean(Log_loss + KL_loss)
-        test_loss = tf.Variable(0.0)
+        VAE_loss = tf.reduce_mean(Log_loss - KL_loss)
+        
     #Outputs a Summary protocol buffer containing a single scalar value.
     tf.summary.scalar('VAE_loss', VAE_loss)
     tf.summary.scalar('KL_loss1', tf.reduce_mean(KL_loss))
     tf.summary.scalar('Log_loss1', tf.reduce_mean(Log_loss))
+    test_loss = tf.Variable(0.0)
     test_loss_sum = tf.summary.scalar('test_loss', test_loss)
 
     optimizer = tf.train.AdadeltaOptimizer().minimize(-VAE_loss)
@@ -214,14 +220,15 @@ def train(input_enc):
     saver = tf.train.Saver()
 
     #store value for these 3 terms so we can plot them later
-    variational_lower_bound_array = []
+    vae_loss_array = []
+    test_vae_array = []
     log_loss_array = []
     KL_loss_array = []
     #iteration_array = [i*recording_interval for i in range(num_iterations/recording_interval)]
 
     ### get the real data
     for batch in range(num_iterations):
-        batch_data = np.round(mnist.train.next_batch(100)[0])
+        batch_data = np.round(mnist.train.next_batch(batch_size)[0])
         #filename =  sess.run(ele)   # name, '1'/'0'
         #batch_data = np.empty([0, seq_len ])
         #for ind in range(len(filename)):
@@ -230,30 +237,29 @@ def train(input_enc):
         #batch_data = np.round(mnist.train.next_batch(batch_size)[0])
         save_name = results_dir + '/' + "_step{}_".format( batch)
         #run our optimizer on our data
-        sess.run(optimizer, feed_dict={inputs_enc: batch_data})
-        if batch % 10 == 0:    # less noisy summary
-            summary = sess.run(summaries, feed_dict={inputs_enc: batch_data})
-            writer.add_summary(summary,  batch)
+        _, summary = sess.run([optimizer, summaries], feed_dict={inputs_enc: batch_data})
+        writer.add_summary(summary,  batch)
 
         ### test
         if (batch % 100 == 0):
-            test_data = mnist.test.images[0:50]
+            test_data = mnist.test.images[0:200]
             ##test_data = np.empty([0, seq_len])
             ##for ind in range(len(files_test)):
                 ##data = np.average(func.read_data(files_test[ind][0]), axis=0)
                 ##test_data = np.vstack((test_data, data))
             vae_temp = VAE_loss.eval({input_enc : test_data})
+            test_vae_array = np.append(test_vae_array, vae_temp)
             summary = sess.run(test_loss_sum, {test_loss: vae_temp})    ## add test score to summary
             writer.add_summary(summary, batch)
             #every 1K iterations record these values
-            vlb_eval = VAE_loss.eval(feed_dict={inputs_enc: batch_data})
-            variational_lower_bound_array.append(vlb_eval )
+            temp_vae = VAE_loss.eval(feed_dict={inputs_enc: batch_data})
             temp_log = np.mean(Log_loss.eval(feed_dict={inputs_enc: batch_data}))
-            log_loss_array.append( temp_log)
             temp_KL = np.mean(KL_loss.eval(feed_dict={inputs_enc: batch_data}))
+            vae_loss_array.append(temp_vae )
             KL_loss_array.append(temp_KL)
+            log_loss_array.append( temp_log)
         if batch % 200 == 0:
-            print "Iteration: {}, Loss: {}, log_loss: {}, KL_term{}".format(batch, vlb_eval, temp_log, temp_KL )
+            print "Iteration: {}, Loss: {}, log_loss: {}, KL_term{}".format(batch, temp_vae, temp_log, temp_KL )
         
         if (batch % 100 == 0):
             saver.save(sess, logdir + '/' + str(batch))
@@ -263,7 +269,7 @@ def train(input_enc):
             #plot_test(batch, save_name=save_name)
             
             plt.figure()
-            plt.plot(np.arange(len(variational_lower_bound_array)), variational_lower_bound_array)
+            plt.plot(np.arange(len(vae_loss_array)), vae_loss_array)
             plt.plot(np.arange(len(KL_loss_array)), KL_loss_array)
             plt.plot( np.arange(len(log_loss_array)), log_loss_array)
             plt.legend(['Variational Lower Bound', 'KL divergence', 'Log Likelihood'], loc="best")

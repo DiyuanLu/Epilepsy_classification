@@ -17,7 +17,8 @@ import time
 data_dir = "data/train_data"
 data_dir_test = "data/test_data"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-version = 'whole_batch100_ds8_cnn'
+version = 'whole_batch50_ori_cnn'
+pattern="*ds_8.csv",
 logdir = "results/" + version + '/' + datetime + "/model"
 resultdir = "results/" + version + '/' + datetime
 if not os.path.exists(logdir):
@@ -27,11 +28,11 @@ if not os.path.exists(resultdir ):
 print resultdir
 plot_every = 500
 save_every = 500
-seq_len = 1280
+seq_len = 10240  ##
 batch_size = 50  # old: 16
 n_classes = 2
 epochs = 50
-total_batches =  epochs * 3000 // batch_size
+total_batches =  epochs * 3000 // batch_size + 1
 
 def get_test_data(data_dir):
     with tf.name_scope("test_data"):
@@ -89,13 +90,14 @@ def train(x):
         #test_acc = tf.placeholder(tf.float32, name="test_acc")    # track acc in test
         accuracy_per_class = tf.metrics.mean_per_class_accuracy(tf.argmax(outputs, 1), tf.argmax(y, 1), n_classes, name='accuracy_per_class')
         test_acc = tf.Variable(0.0)
-        test_fp_ratio = accuracy_per_class[1][1, 1] / tf.sum(accuracy_per_class[1])   ## false_positive / batch_size
-        test_tp_ratio = accuracy_per_class[1][1, 0] / tf.sum(accuracy_per_class[1])   ## true_positive / batch_size
+        # sensitiity = TP / TP + FN, specificity = TN / TN + FP, apc =[TN, FN], [TP, FP]]
+        sensitivity = accuracy_per_class[1][1, 0] / accuracy_per_class[1][1, 0] + accuracy_per_class[1][0, 1]    ## false_positive / batch_size
+        specificity = accuracy_per_class[1][0, 0] / accuracy_per_class[1][0, 0] + accuracy_per_class[1][1, 1]   ## true_positive / batch_size
         tf.summary.scalar('loss', cost)
         tf.summary.scalar('accuracy', accuracy)
         test_acc_sum = tf.summary.scalar('test_accuracy', test_acc)
-        test_fp_ratio_sum = tf.summary.scalar('test_fp_ratio', test_fp_ratio)
-        test_tp_ratio_sum = tf.summary.scalar('test_tp_ratio', test_tp_ratio)
+        sensitivity_sum = tf.summary.scalar('sensitivity', sensitivity)
+        specificity_sum = tf.summary.scalar('specificity', specificity)
 
     optimizer = tf.train.AdamOptimizer().minimize(cost)
     #optimizer = tf.train.GradientDescentOptimizer(0.001).minimize(cost)
@@ -137,9 +139,8 @@ def train(x):
                     batch_data = np.vstack((batch_data, data))
                     batch_labels = np.append(batch_labels, filename[ind][1])
                 batch_labels =  np.eye((n_classes))[batch_labels.astype(int)]   # get one-hot lable
-                ipdb.set_trace()
+
                 _, acc, c, apc, pred, summary = sess.run([optimizer, accuracy, cost, accuracy_per_class, predictions, summaries], feed_dict={x: batch_data, y: batch_labels})
-                #_, acc, c, pred, summary = sess.run([optimizer, accuracy, cost, outputs, summaries], feed_dict={x: batch_data, y: batch_labels})
                 writer.add_summary(summary, batch)
                 ### record loss and accuracy
                 if acc < 0.35:
@@ -153,8 +154,8 @@ def train(x):
                     test_data = np.vstack((test_data, data))
                     test_labels = np.append(test_labels, filename_test[ind][1])
                 test_labels =  np.eye((n_classes))[test_labels.astype(int)]   # get one-hot lable
-                ipdb.set_trace()
                 test_temp = accuracy.eval({x:test_data, y:test_labels})
+                summary = sess.run(summaries, {x:test_data, y:test_labels})   # test_acc_sum, sensitivity_sum, specificity_sum, 
                 summary = sess.run(test_acc_sum, {test_acc: test_temp})    ## add test score to summary
                 writer.add_summary(summary, batch)
                 

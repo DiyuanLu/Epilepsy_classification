@@ -12,15 +12,17 @@ from tensorflow.contrib.learn.python.learn.datasets.mnist import read_data_sets 
 import ipdb
 import datetime
 
-save_every = 2000
+save_every = 5000
 plot_every = 5000
 num_iterations = 100001   # 50
-recording_interval = 100    # 1000   #
+record_every = 100    # 1000   #
+test_every = 100   # check the loss on test set
 n_pixels = 28 * 28
 # HyperParameters
 latent_dim = 20
 h_dim = 500  # size of network
-version = "MNIST"
+batch_size = 200
+version = "vae_ori_MNIST"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 data_dir = "training_data/MNIST_data"
 logdir = "results/" + version + '/' + datetime + "/model"
@@ -167,15 +169,16 @@ def train(X):
     mu, logstd, z = encoder(X)
     reconstruction = decoder(z)
     with tf.name_scope('loss'):
-        Log_loss = tf.reduce_sum(X * tf.log(reconstruction + 1e-9) + (1 - X) * tf.log(1 - reconstruction + 1e-9))
+        Log_loss = tf.reduce_sum(X * tf.log(reconstruction + 1e-9) + (1 - X) * tf.log(1 - reconstruction + 1e-9), reduction_indices=1)
         KL_loss = -0.5 * tf.reduce_sum(1 + 2*logstd - tf.pow(mu, 2) - tf.exp(2 * logstd), reduction_indices=1)
-        VAE_loss = tf.reduce_mean(Log_loss + KL_loss)
+        VAE_loss = tf.reduce_mean(Log_loss - KL_loss)
         
     #Outputs a Summary protocol buffer containing a single scalar value.
     tf.summary.scalar('VAE_loss', VAE_loss)
     tf.summary.scalar('KL_loss', tf.reduce_mean(KL_loss))
     tf.summary.scalar('Log_loss',  tf.reduce_mean(Log_loss))
-
+    test_loss = tf.Variable(0.0)
+    test_loss_sum = tf.summary.scalar('test_loss', test_loss)
     optimizer = tf.train.AdadeltaOptimizer().minimize(-VAE_loss)
     #################### Set up logging for TensorBoard.
     writer = tf.summary.FileWriter(logdir)
@@ -191,48 +194,63 @@ def train(X):
     saver = tf.train.Saver()
 
     #store value for these 3 terms so we can plot them later
-    variational_lower_bound_array = []
+    vae_loss_array = []
     log_loss_array = []
     KL_term_array = []
-    iteration_array = [i*recording_interval for i in range(num_iterations/recording_interval)]
+    test_vae_array = []
+    #iteration_array = [i*record_every for i in range(num_iterations/record_every)]
 
     for i in range(num_iterations):
         save_name = results_dir + '/' + "_step{}_".format(i)
         # np.round to make MNIST binary
         #get first batch (200 digits)
-        x_batch = np.round(mnist.train.next_batch(200)[0])
+        x_batch = np.round(mnist.train.next_batch(batch_size)[0])
         #run our optimizer on our data
         _, summary = sess.run([optimizer, summaries], feed_dict={X: x_batch})
-        writer.add_summary(summary, batch)
-        if (i % recording_interval == 0):
+        writer.add_summary(summary, i)
+        if i % test_every == 0:
+            vae_temp = VAE_loss.eval({X : mnist.test.images[0:200]})
+            test_vae_array = np.append(test_vae_array, vae_temp)
+            summary = sess.run(test_loss_sum, {test_loss: vae_temp})    ## add test score to summary
+            writer.add_summary(summary, i%test_every)
+        if (i % record_every == 0):
             #every 1K iterations record these value
-            temp_vae = np.mean(VAE_loss.eval(feed_dict={X: x_batch}))
-            variational_lower_bound_array.append(temp_vae)
+            temp_vae = VAE_loss.eval(feed_dict={X: x_batch})
             temp_log = np.mean(Log_loss.eval(feed_dict={X: x_batch}))
-            log_loss_array.append(temp_log)
             temp_KL = np.mean(KL_loss.eval(feed_dict={X: x_batch}))
+            vae_loss_array.append(temp_vae)
+            log_loss_array.append(temp_log)
             KL_term_array.append(temp_KL)
             print "Iteration: {}, Loss: {}, log_loss: {}, KL_term{}".format(i, temp_vae, temp_log, temp_KL )
 
         if (i % save_every == 0):
-            if not os.path.exists(logdir):
-                os.makedirs(logdir)
             saver.save(sess, logdir + '/' + str(i))
             
 
-        #if (i % plot_every == 0):
-            ##plot_prior(model_No)
+        if (i % plot_every == 0):
+            #plot_prior(model_No)
             #plot_test(i, save_name=save_name)
             
-            #plt.figure()
-            ##for the number of iterations we had 
-            ##plot these 3 terms
-            #plt.plot(iteration_array, variational_lower_bound_array)
-            #plt.plot(iteration_array, KL_term_array)
-            #plt.plot(iteration_array, log_loss_array)
-            #plt.legend(['Variational Lower Bound', 'KL divergence', 'Log Likelihood'], bbox_to_anchor=(1.05, 1), loc=2)
-            #plt.title('Loss per iteration')
-            #plt.savefig(save_name+"_iter{}_loss.png".format(i), format="png")
+            plt.figure()
+            plt.plot(np.arange(len(vae_loss_array)), color = 'darkmagenta', vae_loss_array)
+            plt.plot(np.arange(len(vae_loss_array)), color = 'slateblue',  KL_term_array)
+            plt.plot(np.arange(len(vae_loss_array)), color = 'darkcyan',  log_loss_array)
+            plt.legend(['Variational Lower Bound', 'KL divergence', 'Log Likelihood'], bbox_to_anchor=(1.05, 1), loc=2)
+            plt.xlabel("training batches/100")
+            plt.title('Loss per iteration')
+            plt.savefig(save_name+"_iter{}_loss.png".format(i), format="png")
+            plt.close()
 
 if __name__ == "__main__":
     train(X)
+
+
+'''
+Iteration: 1000, Loss: -765.553222656, log_loss: -661.36529541, KL_term91.2270965576
+Iteration: 10000, Loss: -538.278320312, log_loss: -509.054290771, KL_term29.9178237915
+Iteration: 20000, Loss: -389.014526367, log_loss: -314.975982666, KL_term49.5837974548
+Iteration: 40000, Loss: -255.193435669, log_loss: -222.865005493, KL_term37.49036026
+Iteration: 69000, Loss: -229.900802612, log_loss: -201.257736206, KL_term26.7798843384
+Iteration: 99500, Loss: -209.463882446, log_loss: -186.51159668, KL_term24.2162322998
+Iteration: 100000, Loss: -209.921600342, log_loss: -184.041793823, KL_term24.8351421356
+'''
