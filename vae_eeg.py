@@ -15,24 +15,24 @@ from tensorflow.examples.tutorials.mnist import input_data    # DOWNLOAD DATA
 mnist = input_data.read_data_sets("data/MNIST_data/",  one_hot=True)
 
 
-SAVE_EVERY = 20000
+SAVE_EVERY = 1000
 plot_every = 5000
-version = "vae_eeg_MNIST_bn"     ###"VAE_ds16"  #
+version = "vae_eeg_tight"     ###"VAE_ds16"  #
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 results_dir = "results/" + version + '/' + datetime
 logdir = results_dir  + "/model" 
-
-data_dir = "data/sub_train/sub_16"
-data_dir_test = "data/sub_test/sub_16"
+print results_dir
+data_dir = "data/train_data"
+data_dir_test = "data/test_data"
 
 num_iterations = 1000001   # 50
 recording_interval = 1000    # 1000   #
 ### Hyperparams
-seq_len = 28 * 28#   640     #
-hid_dim1 = 1000   # Encoder: input -- hidden1 -- latent1 -- hidden2 -- latent2 
+seq_len = 10240    #28 * 28#   640     #
+hid_dim1 = 2000   # Encoder: input -- hidden1 -- latent1 -- hidden2 -- latent2 
 hid_dim2 = 500
-latent_dim = 50
-batch_size = 200
+latent_dim = 
+batch_size = 64
 
 def get_test_data():
     test_data = np.empty([0, seq_len])
@@ -65,116 +65,68 @@ with tf.name_scope("input"):
 
 ############################ Encoder ############################
 def encoder(inputs_enc):
+    """def encoder_net(x, latent_dim, h_dim):
+    Construct an inference network parametrizing a Gaussian.
+    Args:
+    x: A batch of real data (MNIST digits).
+    latent_dim: The latent dimensionality.
+    hidden_size: The size of the neural net hidden layers.
+    Returns:
+    mu: Mean parameters for the variational family Normal
+    sigma: Standard deviation parameters for the variational family Normal
+    """
     
-    with tf.name_scope('Encoder'):
+    with tf.variable_scope('enc') as scope:
         # layer 1
-        W_enc = weight_variables([seq_len, hid_dim2], "W_enc")
-        b_enc = bias_variable([hid_dim2], "b_enc")
-        # tanh - activation function        avoid vanishing gradient in generative models
-        fc = FC_Layer(inputs_enc, W_enc, b_enc)
-        bn_fc = tf.layers.batch_normalization(fc, center=True, scale=True)
-        h_enc = tf.nn.tanh(bn_fc)
-
-        # layer 2   Output mean and std of the latent variable distribution
-        W_mu = weight_variables([hid_dim2, latent_dim], "W_mu")
-        b_mu = bias_variable([latent_dim], "b_mu")
-        mu = FC_Layer(h_enc, W_mu, b_mu)
-
-        W_logstd = weight_variables([hid_dim2, latent_dim], "W_logstd")
-        b_logstd = bias_variable([latent_dim], "b_logstd")
-        logstd = FC_Layer(h_enc, W_logstd, b_logstd)
-
-
-        # Reparameterize import Randomness
-        noise = tf.random_normal([1, latent_dim])
-        # z is the ultimate output(latent variable) of our Encoder
-        z = mu + tf.multiply(noise, tf.exp(0.5*logstd))
-        return mu, logstd, z
-
-############################ Dencoder ############################
-def decoder(inputs_dec):
-    '''Z: random_input 1d(latent_dim,)'''
-    # layer 1
-    with tf.name_scope('Decoder'):
-        W_dec = weight_variables([latent_dim, hid_dim2], "W_dec")
-        b_dec = bias_variable([hid_dim2], "b_dec")
-
-        fc_dec = FC_Layer(inputs_dec, W_dec, b_dec)
-        bn_fc_dec = tf.layers.batch_normalization(fc_dec, center=True, scale=True)
-        # tanh - decode the latent representation
-        h_dec= tf.nn.tanh(bn_fc_dec)
-    
-        # layer2 - reconstruction the image and output 0 or 1
-        W_rec = weight_variables([hid_dim2, seq_len], "W_dec")
-        b_rec = bias_variable([seq_len], "b_rec")
-        # 784 bernoulli parameter Output
-        reconstruction = tf.nn.sigmoid(FC_Layer(h_dec, W_rec, b_rec))
-        return reconstruction
-  
-## Variational Autoencoder
-#def encoder(inputs_enc):
-    #"""def encoder_net(x, latent_dim, h_dim):
-    #Construct an inference network parametrizing a Gaussian.
-    #Args:
-    #x: A batch of real data (MNIST digits).
-    #latent_dim: The latent dimensionality.
-    #hidden_size: The size of the neural net hidden layers.
-    #Returns:
-    #mu: Mean parameters for the variational family Normal
-    #sigma: Standard deviation parameters for the variational family Normal
-    #"""
-    
-    #with tf.variable_scope('enc') as scope:
-        ## layer 1
-        #enc_hidden1 = tf.contrib.layers.fully_connected(
-                                                                            #inputs_enc,  # input data
-                                                                            #hid_dim1,    # output dimension
-                                                                            #activation_fn=tf.nn.tanh)   # activation function
+        enc_hidden1 = tf.contrib.layers.fully_connected(
+                                                                            inputs_enc,  # input data
+                                                                            hid_dim1,    # output dimension
+                                                                            activation_fn=tf.nn.tanh)   # activation function
         #enc_hidden2 = tf.contrib.layers.fully_connected(
                                                                             #enc_hidden1,
                                                                             #hid_dim2,
                                                                             #activation_fn=tf.nn.tanh)
-        #mu_1= tf.contrib.layers.fully_connected(
-                                                                            #enc_hidden2,
-                                                                            #latent_dim1,
-                                                                            #activation_fn=None)
-        #sigma_1= tf.contrib.layers.fully_connected(
-                                                                            #enc_hidden2,
-                                                                            #latent_dim1,
-                                                                            #activation_fn=None)
-        ## Reparameterize import Randomness
-        #noise = tf.random_normal([1, latent_dim1])
-        ## z_1 is the fisrt leverl output(latent variable) of our Encoder
-        #z_1 = mu_1 + tf.multiply(noise, tf.exp(0.5*sigma_1))
+        mu_1= tf.contrib.layers.fully_connected(
+                                                                            enc_hidden1,
+                                                                            latent_dim,
+                                                                            activation_fn=None)
+        sigma_1= tf.contrib.layers.fully_connected(
+                                                                            enc_hidden1,
+                                                                            latent_dim,
+                                                                            activation_fn=None)
+        # Reparameterize import Randomness
+        noise = tf.random_normal([1, latent_dim])
+        # z_1 is the fisrt leverl output(latent variable) of our Encoder
+        z_1 = mu_1 + tf.multiply(noise, tf.exp(0.5*sigma_1))
 
-        #return mu_1, sigma_1
+        return mu_1, sigma_1, z_1
 
 
-#def decoder(inputs_dec):
-    #"""Build a generative network parametrizing the likelihood of the data
-    #Args:
-    #inputs_dec: Samples of latent variables with size latent_dim_2
-    #hidden_size: Size of the hidden state of the neural net
-    #Returns:
-    #reconstruction: logits for the Bernoulli likelihood of the data
-    #"""
+def decoder(inputs_dec):
+    """Build a generative network parametrizing the likelihood of the data
+    Args:
+    inputs_dec: Samples of latent variables with size latent_dim_2
+    hidden_size: Size of the hidden state of the neural net
+    Returns:
+    reconstruction: logits for the Bernoulli likelihood of the data
+    """
 
-    #with tf.variable_scope('dec') as scope:
-        ## layer 1
-        #dec_hidden2 = tf.contrib.layers.fully_connected(
-                                                                            #inputs_dec,
-                                                                            #hid_dim2,
-                                                                            #activation_fn=tf.nn.tanh)
+    with tf.variable_scope('dec') as scope:
+        # layer 1
+        dec_hidden2 = tf.contrib.layers.fully_connected(
+                                                                            inputs_dec,
+                                                                            hid_dim1,
+                                                                            activation_fn=tf.nn.tanh)
         #dec_hidden1 = tf.contrib.layers.fully_connected(
                                                                             #dec_hidden2,
                                                                             #hid_dim1,
                                                                             #activation_fn=tf.nn.tanh)
 
-        #reconstruction = tf.contrib.layers.fully_connected(
-                                                                            #dec_hidden1,
-                                                                            #seq_len,
-                                                                            #activation_fn=tf.nn.sigmoid)
-        #return reconstruction
+        reconstruction = tf.contrib.layers.fully_connected(
+                                                                            dec_hidden2,
+                                                                            seq_len,
+                                                                            activation_fn=tf.nn.sigmoid)
+        return reconstruction
 
 def train(input_enc):
     #### Get data
@@ -269,12 +221,16 @@ def train(input_enc):
             #plot_test(batch, save_name=save_name)
             
             plt.figure()
-            plt.plot(np.arange(len(vae_loss_array)), vae_loss_array)
-            plt.plot(np.arange(len(KL_loss_array)), KL_loss_array)
-            plt.plot( np.arange(len(log_loss_array)), log_loss_array)
-            plt.legend(['Variational Lower Bound', 'KL divergence', 'Log Likelihood'], loc="best")
-            plt.title('Loss per batch')
+            plt.plot(np.arange(len(vae_loss_array)), color = 'orchid', vae_loss_array)
+            plt.plot(np.arange(len(vae_loss_array)), color = 'c',  KL_term_array)
+            plt.plot(np.arange(len(vae_loss_array)), color = 'b',  log_loss_array)
             plt.savefig(save_name+"loss_iter{}_loss.png".format(batch), format="png")
+            plt.title('Loss during training')
+            plt.close()
+            plt.figure()
+            plt.plot(np.arange(len(test_vae_array)), color = 'darkcyan',  test_vae_array)
+            plt.title('Loss in test')
+            plt.savefig(save_name+"test_loss_iter{}.png".format(batch), format="png")
             plt.close()
 
 if __name__ == "__main__":
