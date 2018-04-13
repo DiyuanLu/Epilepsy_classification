@@ -92,30 +92,38 @@ def PCA_plot(pca_fit):
         fig = plt.figure(data=data, layout=layout)
         plt.plot(fig)
 
-def plot_learning_curve(train_scores, test_scores, title="Learning curve", save_name="learning curve"):
+def plot_learning_curve(train_scores, test_scores , num_trial=1, title="Learning curve", save_name="learning curve"):
     '''plot smooth learning curve
     train_scores: n_samples * n_features
     test_scores: n_samples * n_features
     '''
     plt.figure()
     plt.title(title)
-    train_sizes = len(train_scores)
     plt.xlabel("training batches")
     plt.ylabel("accuracy")
-    train_scores_mean = np.mean(train_scores, axis=1)
-    train_scores_std = np.std(train_scores, axis=1)
-    test_scores_mean = np.mean(test_scores, axis=1)
-    test_scores_std = np.std(test_scores, axis=1)
-    plt.grid()
-    plt.fill_between(np.arange(train_sizes), train_scores_mean - train_scores_std,
-                    train_scores_mean + train_scores_std, alpha=0.25,color="m")
-    plt.fill_between(np.arange(train_sizes), test_scores_mean - test_scores_std,
-                     test_scores_mean + test_scores_std, alpha=0.25, color="c")
-    plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="indigo",
-             label="Training score")
-    plt.plot(np.arange(train_sizes), test_scores_mean, '-', color="teal",
-             label="Test score")
-    plt.legend(loc="best")
+    if num_trial > 1:
+        train_sizes = len(train_scores)
+        train_scores_mean = np.mean(train_scores, axis=1)
+        train_scores_std = np.std(train_scores, axis=1)
+        test_scores_mean = np.mean(test_scores, axis=1)
+        test_scores_std = np.std(test_scores, axis=1)
+        plt.grid()
+        plt.fill_between(np.arange(train_sizes), train_scores_mean - train_scores_std,
+                        train_scores_mean + train_scores_std, alpha=0.25,color="m")
+        plt.fill_between(np.arange(train_sizes), test_scores_mean - test_scores_std,
+                         test_scores_mean + test_scores_std, alpha=0.25, color="c")
+        plt.plot(np.arange(train_sizes), train_scores_mean, '-', color="indigo",
+                 label="Training score")
+        plt.plot(np.arange(train_sizes), test_scores_mean, '-', color="teal",
+                 label="Test score")
+        plt.legend(loc="best")
+    elif num_trial == 1:
+        train_scores_mean = smooth(train_scores_mean, window=11)
+        data_smooth = train_scores_mean.shape[0]
+        sizes = data.shape[0]
+        plt.grid()
+        plt.fill_between(np.arange(train_scores), data_smooth - data_std, data_smooth + data_std, alpha=0.3, color="lightskyblue")
+        plt.plot(np.arange(sizes), data_smooth, '-', color="royalblue")
     plt.savefig(save_name, format="png")
     plt.close()
 
