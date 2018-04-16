@@ -15,22 +15,16 @@ import functions as func
 #from tensorflow.examples.tutorials.mnist import input_data    # DOWNLOAD DATA
 #mnist = input_data.read_data_sets("data/MNIST_data/",  one_hot=True)
 
-
-save_every = 200
-plot_every = 500
 version = "vae_CNN_eeg"     ###"VAE_ds16"  #
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-results_dir = "results/" + version + '/' + datetime
-logdir = results_dir  + "/model"
-if not os.path.exists(logdir):
-    os.makedirs(logdir)
-if not os.path.exists(results_dir ):
-    os.makedirs(results_dir )
 data_dir = "data/train_data"
 data_dir_test = "data/test_data"
-
-num_iterations = 100001   # 50
+save_every = 25
+plot_every = 20
+test_every = 5
+num_iterations = 101   # 50
 recording_interval = 1000    # 1000   #
+print_result = 10
 ### Hyperparams
 seq_len = 1280 #   640     #10240    #28 * 28
 hid_dim1 = 2000   # Encoder: input -- hidden1 -- latent1 -- hidden2 -- latent2
@@ -39,7 +33,13 @@ latent_dim = 50
 batch_size = 16
 epochs = 50
 total_batches =  epochs * 3000 // batch_size + 1
-
+results_dir = "results/" + version + '/' + datetime +'bs_' +np.str(batch_size)+'len_' +np.str(seq_len)
+logdir = results_dir  + "/model"
+if not os.path.exists(logdir):
+    os.makedirs(logdir)
+if not os.path.exists(results_dir ):
+    os.makedirs(results_dir )
+    
 def get_test_data():
     test_data = np.empty([0, seq_len])
     test_labels = np.empty([0])
@@ -293,19 +293,20 @@ def train(input_enc):
 
         #run our optimizer on our data
         _, summary = sess.run([optimizer, summaries], feed_dict={inputs_enc: batch_data})
-
+        writer.add_summary(summary, batch)
         ### test
-        if (batch % 200 == 0):
+        if (batch % test_every == 0):
             #test_data = mnist.test.images[0:200]
             test_data = np.empty([0, seq_len])
             for ind in range(len(files_test)):
                 data = np.average(func.read_data(files_test[ind][0]), axis=0)
                 test_data = np.vstack((test_data, data))
 
-            vae_temp = VAE_loss.eval({input_enc : test_data})
-            test_vae_array = np.append(test_vae_array, vae_temp)
+            test_temp = VAE_loss.eval({input_enc : test_data})
+            test_vae_array = np.append(test_vae_array, test_temp)
 
-            summary = sess.run(test_loss_sum, {test_loss: vae_temp})    ## add test score to summary
+            summary = sess.run(test_loss_sum, {test_loss: test_temp})    ## add test score to summary
+            writer.add_summary(summary, batch % test_every)
             #every 1K iterations record these values
             temp_vae = VAE_loss.eval(feed_dict={inputs_enc: batch_data})
             temp_log = np.mean(Log_loss.eval(feed_dict={inputs_enc: batch_data}))
@@ -313,21 +314,20 @@ def train(input_enc):
             vae_loss_array.append(temp_vae )
             KL_loss_array.append(temp_KL)
             log_loss_array.append( temp_log)
-        if batch % 200 == 0:
+        if batch % print_result == 0:
             print "Iteration: {}, Loss: {}, log_loss: {}, KL_term {}".format(batch, temp_vae, temp_log, temp_KL )
 
         if (batch % save_every == 0):
             saver.save(sess, logdir + '/' + str(batch))
 
-        if (batch % 10 == 0):
-            ##plot_prior(model_No)
-            #plot_test(batch, save_name=save_name)
-
+        if (batch % plot_every == 0):
             plt.figure()
-            plt.plot(np.arange(len(vae_loss_array)), vae_loss_array, color = 'orchid')
-            plt.plot(np.arange(len(vae_loss_array)),  KL_loss_array, color = 'c')
-            plt.plot(np.arange(len(vae_loss_array)),  log_loss_array, color = 'b')
-            plt.savefig(save_name+"loss_iter{}_loss.png".format(batch), format="png")
+            plt.plot(np.arange(len(vae_loss_array)), vae_loss_array, color = 'orchid', label='vae_los')
+            plt.plot(np.arange(len(vae_loss_array)),  KL_loss_array, color = 'c', label='KL_loss')
+            plt.plot(np.arange(len(vae_loss_array)),  log_loss_array, color = 'b', label='log_likelihood')
+            plt.xlabel("training ")
+            plt.legend(loc="best")
+            plt.savefig(save_name+"losses_iter{}.png".format(batch), format="png")
             plt.title('Loss during training')
             plt.close()
             plt.figure()
@@ -337,7 +337,17 @@ def train(input_enc):
             plt.close()
             #func.plot_learning_curve(test_vae_array, test_vae_array, num_trial=1, save_name=resultdir + "/learning_curve.png")
             #func.plot_smooth_shadow_curve(np.array(vae_loss_array), save_name=results_dir + "/loss_in_training.png")
+    func.save_data((vae_loss_array, KL_loss_array, log_loss_array), header='vae_loss,KL_loss,log_loss', save_dir=save_name+'3losses.csv')
 
-            writer.add_summary(summary, batch)
+        
 if __name__ == "__main__":
     train(inputs_enc)
+
+'''
+Iteration: 0, Loss: -1559.66674805, log_loss: -785.173950195, KL_term 624.776916504
+Iteration: 600, Loss: -1406.72229004, log_loss: -969.086486816, KL_term 423.029876709
+Iteration: 1000, Loss: -1250.46850586, log_loss: -941.946777344, KL_term 305.732299805
+Iteration: 2000, Loss: -1062.35107422, log_loss: -886.799804688, KL_term 175.553817749
+Iteration: 3000, Loss: -978.892456055, log_loss: -797.363830566, KL_term 189.481140137
+Iteration: 4000, Loss: -862.5078125, log_loss: -789.658935547, KL_term 102.668769836
+Iteration: 5000, Loss: -1050.76171875, log_loss: -996.399780273, KL_term 103.408706665'''

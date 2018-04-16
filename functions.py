@@ -9,7 +9,7 @@ import os
 import sys
 from functools import partial
 import matplotlib.pyplot as plt
-#import ipdb
+import ipdb
 import random
 
 
@@ -157,8 +157,24 @@ def plotdata(data, color='darkorchid', xlabel="training time", ylabel="loss", sa
     plt.savefig(save_name + "_{}".format(ylabel))
     plt.close()
 
-def save_data(data, save_name="save_data"):
-    '''save data into a .csv file'''
+def save_data(data, header='data', save_dir="save_data"):
+    '''save data into a .csv file
+    data: list of data that need to be saved, (x1, x2, x3...)
+    header: String that will be written at the beginning of the file.'''
+    np.savetxt(save_dir, data, header=header, delimiter=',', fmt="%10.5f", comments='')
+
+def load_data(data_dir):
+    '''Load variables' data from pre-saved .csv file
+    return a dict '''
+    reader = csv.reader(codecs.open(data_dir, 'rb', 'utf-8'))
+    data = dict()
+    for ind, row in enumerate(reader):
+        if  ind == 0:
+            ipdb.set_trace()
+            names = row
+        else:
+            data[names[ind-1]]= np.array(row).astype(np.float32)
+    return data, names
 
 def smooth(x,window_len=11,window='hanning'):
     """smooth the data using a window with requested size.
