@@ -12,13 +12,13 @@ import matplotlib.pyplot as plt
 #import ipdb
 import random
 import matplotlib.pylab as pylab
-params = {'legend.fontsize': 16,
+params = {'legend.fontsize': 12,
           'figure.figsize': (10, 8.8),
-         'axes.labelsize': 20,
+         'axes.labelsize': 16,
          #'weight' : 'bold',
-         'axes.titlesize':20,
-         'xtick.labelsize':16,
-         'ytick.labelsize':16}
+         'axes.titlesize':16,
+         'xtick.labelsize':12,
+         'ytick.labelsize':12}
 pylab.rcParams.update(params)
 import matplotlib
 

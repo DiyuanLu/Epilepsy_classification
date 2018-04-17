@@ -9,8 +9,8 @@ import sounddevice as sd
 import matplotlib.pyplot as plt
 from scipy.io import wavfile
 import ipdb
-
-
+import os
+import functions as func
 
 def autocorrelation(x) :
     """
@@ -54,13 +54,13 @@ def plotSpectrum(data,Fs):
     Y = scifft(data)/n # fft computing and normalization
     Y = Y[range(n/2)]
 
-    plt.plot(frq,np.abs(Y),'r') # plotting the spectrum
+    plt.plot(frq,np.abs(Y),'orchid') # plotting the spectrum
     plt.xlabel('Freq (Hz)')
     plt.ylabel('|Y(freq)|')
 
 def plotPowerSpectrum(data, Fs):
     f, Pxx_den = signal.periodogram(data, Fs)
-    plt.semilogy(f, Pxx_den)
+    plt.semilogy(f, Pxx_den, 'royalblue')
     plt.xlabel('frequency [Hz]')
     plt.ylabel('PSD [V**2/Hz]')
 
@@ -73,39 +73,49 @@ def plotWaveletSpectrum(data):
     plt.colorbar()
 
 def plotOnePair(data1, data2):
-    plt.figure()
-    plt.subplot(411)
-    plt.plot(data1, 'c')
-    plt.plot(data2 - np.abs(np.max(data2)) -  np.abs(np.max(data1)), 'm')
-    plt.xlabel("time")
-    plt.ylabel("data")
-    plt.subplot(412)
-    plt.plot(correlation, 'r')
-    plt.xlabel("time")
-    plt.ylabel("correlation")
-    plt.subplot(413)
+    '''plot the original data-pair'''
+    gs_top = plt.GridSpec(4, 1, hspace=0)
+    gs_base = plt.GridSpec(4, 1)
+    fig = plt.figure()
+    ### share x axis
+    ax = fig.add_subplot(gs_top[0, :]) # Need to create the first one to share...
+    ax.plot(data1, 'orchid', label="data_1")
+    plt.setp(ax.get_xticklabels(), visible=False)
+    plt.ylabel("recording/ mV")
+    other_axes = [fig.add_subplot(gs_top[i,:], sharex=ax) for i in range(1, 2)]
+    other_axes[0].plot(data2, 'blueviolet', label="data_2")
+    plt.ylabel("recording/ mV")
+    plt.xlim([0, 10240])
+
+    fig.add_subplot(gs_base[2])
     plotPowerSpectrum(data1, 1000)
-    plt.subplot(414)
+    plt.title("power spectrum")
+    plt.xlim([0, 100])
+    plt.ylim([0.01, 10000])
+    
+    fig.add_subplot(gs_base[3])
     plotSpectrum(data1,100)
-    plt.figure()
-    plotWaveletSpectrum(data1)
+    plt.title("spectrum")
+    plt.xlim([0, 100])
+    plt.tight_layout()
+    #plt.subplot(414)
+    #plotWaveletSpectrum(data1)
+
 
 def plotAllPairs(files):
     X_DATA, Y_DATA = np.array([])
 
-files = []
-for ind in range(10, 11):
-    filename = "Data_N_Ind"+ (4-len(np.str(ind))) * '0' + np.str(ind) + ".csv"
-    files.append(filename)
-
+data_dir = "data/test_files/"
+files = func.find_files(data_dir, withlabel=False)
 for filename in files:
-    filedir = "data/"
-    x_data, y_data = read_data("data/" + filename)
-    fft, correlation = autocorrelation(x_data)
+    print filename
+    x_data, y_data = read_data(filename)
+    #fft, correlation = autocorrelation(x_data)
 
-    sd.play(x_data, 1000)
-    wavfile.write("results/audio/" + filename + "fs1000.wav", 1000, x_data)
-
+    #sd.play(x_data, 1000)
+    #wavfile.write("results/audio/" + filename + "fs1000.wav", 1000, x_data)
+    #ipdb.set_trace()
     plotOnePair(x_data, y_data)
+    plt.savefig( filename[0:-4] +"_original.png")
+    plt.close()
 
-    plt.savefig("eeg_onepair" + filename +".png")

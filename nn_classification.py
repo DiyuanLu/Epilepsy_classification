@@ -17,7 +17,7 @@ import time
 data_dir = "data/train_data"
 data_dir_test = "data/test_data"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-version = 'whole_batch20_ds8_ori_cnn3'
+version = 'whole_batch20_ds8_ori_fc3'
 pattern='*ds_8.csv'
 results_dir= "results/" + version + '/' + datetime
 logdir = results_dir+ "/model"
@@ -78,9 +78,9 @@ def train(x):
         ele_test = iter_test.get_next()   #you get the filename
 
     #### feed the inputs to the network
-    #outputs = mod.network(x)
+    outputs = mod.fc_net(x, hid_dims=[500, 300, 100])
     #outputs = mod.CNN2(x, seq_len=seq_len)
-    outputs = mod.CNN(x, seq_len=seq_len, num_filters=[32, 64])
+    #outputs = mod.CNN(x, seq_len=seq_len, num_filters=[32, 64])
 
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
@@ -154,11 +154,12 @@ def train(x):
                 ### record loss and accuracy
                 if acc < 0.35:
                     outliers.append(filename)
+                # track training
+                acc_total_train = np.append(acc_total_train, acc)
+                sen_total_train = np.append(sen_total_train, sensi)   # sensitivity
+                spe_total_train = np.append(spe_total_train, speci)
+                loss_total_train = np.append(loss_total_train, c)
                 if batch % 1 == 0:
-                    acc_total_train = np.append(acc_total_train, acc)
-                    sen_total_train = np.append(sen_total_train, sensi)   # sensitivity
-                    spe_total_train = np.append(spe_total_train, speci)
-                    loss_total_train = np.append(loss_total_train, c)
                     ############################################################ test
                     test_data = np.empty([0, seq_len])
                     test_labels = np.empty([0])
