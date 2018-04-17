@@ -17,21 +17,21 @@ import time
 data_dir = "data/train_data"
 data_dir_test = "data/test_data"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-version = 'whole_batch50_ori_cnn'
-pattern="*ds_8.csv",
-logdir = "results/" + version + '/' + datetime + "/model"
-resultdir = "results/" + version + '/' + datetime
+version = 'whole_batch20_ds8_ori_cnn3'
+pattern='*ds_8.csv'
+results_dir= "results/" + version + '/' + datetime
+logdir = results_dir+ "/model"
 if not os.path.exists(logdir):
     os.makedirs(logdir)
-if not os.path.exists(resultdir ):
-    os.makedirs(resultdir )
-print resultdir
-plot_every = 500
-save_every = 500
-seq_len = 10240  ##
-batch_size = 50  # old: 16
+if not os.path.exists(results_dir):
+    os.makedirs(results_dir)
+print results_dir
+plot_every = 100
+save_every = 100
+seq_len = 1280   #10240  ##
+batch_size = 20  # old: 16     20has a very good result
 n_classes = 2
-epochs = 50
+epochs = 10
 total_batches =  epochs * 3000 // batch_size + 1
 
 def get_test_data(data_dir):
@@ -65,8 +65,8 @@ y = tf.placeholder("float32")
 def train(x):
     with tf.name_scope("Data"):
         #### Get data
-        files_train = func.find_files(data_dir, pattern="*ds_8.csv", withlabel=True )### traverse all the files in the dir, and divide into batches, from
-        files_test = func.find_files(data_dir_test, pattern="*ds_8.csv", withlabel=True )### traverse all the files in the dir, and divide into batches, from
+        files_train = func.find_files(data_dir, pattern=pattern, withlabel=True )### traverse all the files in the dir, and divide into batches, from
+        files_test = func.find_files(data_dir_test, pattern=pattern, withlabel=True )### traverse all the files in the dir, and divide into batches, from
         file_tensor_train = tf.convert_to_tensor(files_train, dtype=tf.string)## convert to tensor
         file_tensor_test = tf.convert_to_tensor(files_test, dtype=tf.string)## convert to tensor
         dataset = tf.data.Dataset.from_tensor_slices(file_tensor_train).repeat().batch(batch_size).shuffle(buffer_size=10000)
@@ -80,7 +80,8 @@ def train(x):
     #### feed the inputs to the network
     #outputs = mod.network(x)
     #outputs = mod.CNN2(x, seq_len=seq_len)
-    outputs = mod.CNN(x, seq_len=seq_len)
+    outputs = mod.CNN(x, seq_len=seq_len, num_filters=[32, 64])
+
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
@@ -89,15 +90,20 @@ def train(x):
         accuracy = tf.reduce_mean(tf.cast(correct, "float32"), name="accuracy")
         #test_acc = tf.placeholder(tf.float32, name="test_acc")    # track acc in test
         accuracy_per_class = tf.metrics.mean_per_class_accuracy(tf.argmax(outputs, 1), tf.argmax(y, 1), n_classes, name='accuracy_per_class')
-        test_acc = tf.Variable(0.0)
         # sensitiity = TP / TP + FN, specificity = TN / TN + FP, apc =[TN, FN], [TP, FP]]
-        sensitivity = accuracy_per_class[1][1, 0] / accuracy_per_class[1][1, 0] + accuracy_per_class[1][0, 1]    ## false_positive / batch_size
-        specificity = accuracy_per_class[1][0, 0] / accuracy_per_class[1][0, 0] + accuracy_per_class[1][1, 1]   ## true_positive / batch_size
+        sensitivity = accuracy_per_class[1][1, 0] / (accuracy_per_class[1][1, 0] + accuracy_per_class[1][0, 1] )   ## false_positive / batch_size
+        specificity = accuracy_per_class[1][0, 0] / (accuracy_per_class[1][0, 0] + accuracy_per_class[1][1, 1])   ## true_positive / batch_size
+        ###### Mask out the padded frames
+        #loss_neg = tf.reduce_mean(1 - specificity)
+        #loss_posi = tf.reduce_mean(1 - sensitivity)
+        #d_loss = tf.reduce_mean(loss_neg) + tf.reduce_mean(loss_neg)  # This optimizes the discriminator.
+        
+        test_acc = tf.Variable(0.0)
         tf.summary.scalar('loss', cost)
         tf.summary.scalar('accuracy', accuracy)
-        test_acc_sum = tf.summary.scalar('test_accuracy', test_acc)
         sensitivity_sum = tf.summary.scalar('sensitivity', sensitivity)
         specificity_sum = tf.summary.scalar('specificity', specificity)
+        test_acc_sum = tf.summary.scalar('test_accuracy', test_acc)
 
     optimizer = tf.train.AdamOptimizer().minimize(cost)
     #optimizer = tf.train.GradientDescentOptimizer(0.001).minimize(cost)
@@ -125,10 +131,11 @@ def train(x):
             acc_total_train = np.array([])
             acc_total_test = np.array([])
             loss_total_train = np.array([])
+            sen_total_train = np.array([])   # sensitivity
+            spe_total_train = np.array([])    # specificity
             # track the outlier files
             for batch in range(total_batches):
-                if batch % 100 == 0:
-                    print "trial: ", trial, "batch",batch
+                save_name = results_dir + '/' + "_step{}_".format( batch)
                 filename =  sess.run(ele)   # name, '1'/'0'
                 filename_test =  sess.run(ele_test)   # name, '1'/'0'
 
@@ -140,43 +147,45 @@ def train(x):
                     batch_labels = np.append(batch_labels, filename[ind][1])
                 batch_labels =  np.eye((n_classes))[batch_labels.astype(int)]   # get one-hot lable
 
-                _, acc, c, apc, pred, summary = sess.run([optimizer, accuracy, cost, accuracy_per_class, predictions, summaries], feed_dict={x: batch_data, y: batch_labels})
+                _, acc, c, sensi, speci, summary = sess.run([optimizer, accuracy, cost, sensitivity, specificity, summaries], feed_dict={x: batch_data, y: batch_labels})
+                if batch % 100 == 0:
+                    print "trial: ", trial, "batch",batch, "sensitivity", sensi, "specificity", speci
                 writer.add_summary(summary, batch)
                 ### record loss and accuracy
                 if acc < 0.35:
                     outliers.append(filename)
-                acc_total_train = np.append(acc_total_train, acc)
-                ### test
-                test_data = np.empty([0, seq_len])
-                test_labels = np.empty([0])
-                for ind in range(len(filename_test)):
-                    data = np.average(func.read_data(filename_test[ind][0]), axis=0)
-                    test_data = np.vstack((test_data, data))
-                    test_labels = np.append(test_labels, filename_test[ind][1])
-                test_labels =  np.eye((n_classes))[test_labels.astype(int)]   # get one-hot lable
-                test_temp = accuracy.eval({x:test_data, y:test_labels})
-                summary = sess.run(summaries, {x:test_data, y:test_labels})   # test_acc_sum, sensitivity_sum, specificity_sum, 
-                summary = sess.run(test_acc_sum, {test_acc: test_temp})    ## add test score to summary
-                writer.add_summary(summary, batch)
-                
-                acc_total_test = np.append(acc_total_test, test_temp)
-                loss_total_train = np.append(loss_total_train, c)
-                
+                if batch % 1 == 0:
+                    acc_total_train = np.append(acc_total_train, acc)
+                    sen_total_train = np.append(sen_total_train, sensi)   # sensitivity
+                    spe_total_train = np.append(spe_total_train, speci)
+                    loss_total_train = np.append(loss_total_train, c)
+                    ############################################################ test
+                    test_data = np.empty([0, seq_len])
+                    test_labels = np.empty([0])
+                    for ind in range(len(filename_test)):
+                        data = np.average(func.read_data(filename_test[ind][0]), axis=0)
+                        test_data = np.vstack((test_data, data))
+                        test_labels = np.append(test_labels, filename_test[ind][1])
+                    test_labels =  np.eye((n_classes))[test_labels.astype(int)]   # get one-hot lable
+                    test_temp = accuracy.eval({x:test_data, y:test_labels})
+                    acc_total_test = np.append(acc_total_test, test_temp)
+                    summary = sess.run(summaries, {x:test_data, y:test_labels})   # test_acc_sum, sensitivity_sum, specificity_sum, 
+                    summary = sess.run(test_acc_sum, {test_acc: test_temp})    ## add test score to summary
+                    writer.add_summary(summary, batch)
+                    ########################################################
                 if batch % save_every == 0:
                     saver.save(sess, logdir + '/batch' + str(batch))
 
-                if batch % plot_every == 0 :
-                    func.plotdata(loss_total_train, color='c', ylabel="loss", save_name=resultdir + "/loss_batch_{}".format(batch))
-                    func.plotdata(acc_total_test, color='m', ylabel="accuracy", save_name=resultdir + "/test_acc_batch_{}".format(batch))
+                if batch % plot_every == 0 and batch > plot_every :   #
+                    func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_batch_{}".format(batch))
+
+                    func.plot_smooth_shadow_curve(loss_total_train, colors='c', ylabel="loss", title='Loss in training',labels='loss_train', save_name=results_dir+ "/loss_batch_{}".format(batch))
+                    #ipdb.set_trace()
+                    func.save_data((acc_total_train, loss_total_train, acc_total_test, sen_total_train, spe_total_train), header='accuracy_train,loss_train,accuracy_test,sen_total_train,spe_total_train', save_dir=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
             acc_trial_train[:, trial] = acc_total_train
             loss_trial_train[:, trial] = loss_total_train
             acc_trial_test[:, trial] = acc_total_test
 
-        # save outliers files name
-        #np.savetxt(resultdir + "/outlier_files" + ".txt", outliers, delimiter=',')
-
-        func.plot_learning_curve(acc_trial_train, acc_trial_test, save_name=resultdir + "/learning_curve")
-        func.plot_smooth_shadow_curve(loss_trial_train, save_name=resultdir + "/loss_in_training")
 
 
 if __name__ == "__main__":

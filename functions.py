@@ -9,9 +9,18 @@ import os
 import sys
 from functools import partial
 import matplotlib.pyplot as plt
-import ipdb
+#import ipdb
 import random
-
+import matplotlib.pylab as pylab
+params = {'legend.fontsize': 16,
+          'figure.figsize': (10, 8.8),
+         'axes.labelsize': 20,
+         #'weight' : 'bold',
+         'axes.titlesize':20,
+         'xtick.labelsize':16,
+         'ytick.labelsize':16}
+pylab.rcParams.update(params)
+import matplotlib
 
 def find_files(directory, pattern='*.csv', withlabel=True):
     '''fine all the files in one directory and assign '1'/'0' to F or N files'''
@@ -48,15 +57,15 @@ def downsampling(filename, ds_factor):
     np.savetxt(os.path.dirname(filename) + "/ds_" + np.str(ds_factor)  + os.path.basename(filename) , zip(ds_x, ds_y), delimiter=',', fmt="%10.5f")
 
 def rename_files(filename):
-    os.rename(filename, os.path.dirname(filename) + '/ds_16' + os.path.basename(filename))
+    os.rename(filename, os.path.dirname(filename) + '/' + os.path.basename(filename)[5:])
 
 def remove_files(filename):
     os.remove(filename)
 
 def multiprocessing_func(data_dir):
-    filenames = find_files(data_dir, pattern='*ds_16.csv', withlabel=False )
+    filenames = find_files(data_dir, pattern='*.csv', withlabel=False )
     pool = multiprocessing.Pool()
-    version = 'rename'        # 'remove'       # 'downsampling'
+    version = None#'remove'       # 'downsampling'      #'rename'      # 'rename'        # 
     if version == 'downsampling':
         for ds in [2]:
             pool.map(partial(downsampling, ds_factor=ds), filenames)
@@ -127,19 +136,25 @@ def plot_learning_curve(train_scores, test_scores , num_trial=1, title="Learning
     plt.savefig(save_name, format="png")
     plt.close()
 
-def plot_smooth_shadow_curve(data, title="Loss during training", save_name="loss"):
+def plot_smooth_shadow_curve(datas, colors='darkcyan', xlabel='training batches / 20', ylabel='accuracy', title='Loss during training', labels='accuracy_train', save_name="loss"):
     '''plot a smooth version of noisy data with mean and std as shadow
-    data: n_samples * n_trials'''
-    data_smooth = smooth(data, window=21)
-    data_smooth = data_smooth.shape[0]
-    #data_mean = np.mean(data, axis=1)
-    #data_std = np.std(data, axis=1)
-    sizes = data.shape[0]
-    plt.grid()
-    plt.fill_between(np.arange(sizes), data_smooth - data_std, data_smooth + data_std, alpha=0.3, color="lightskyblue")
-    plt.plot(np.arange(sizes), data_smooth, '-', color="royalblue")
+    data: a list of variables values, shape: (batches, )
+    color: list of prefered colors
+    '''
+    plt.figure()
+    for ind, data in enumerate(datas) :
+        data_smooth = smooth(data, window_len=25)
+        data_smooth = data_smooth[0:len(data)]
+        data_mean = np.mean(np.vstack((data, data_smooth)), axis=0)
+        data_std = np.std(np.vstack((data, data_smooth)), axis=0)
+        sizes = data_std.shape[0]
+        plt.grid()
+        plt.fill_between(np.arange(sizes), data_smooth - data_std, data_smooth + data_std, alpha=0.5, color="lightcoral")
+        plt.plot(np.arange(sizes), data_smooth, '-', linewidth=2, color=colors[ind], label=labels[ind])
+    plt.ylabel(ylabel)
+    plt.xlabel(xlabel)
+    plt.legend(loc="best")
     plt.title(title)
-    plt.ylim([0.0, 2.])
     plt.savefig(save_name, format="png")
     plt.close()
 
@@ -157,11 +172,11 @@ def plotdata(data, color='darkorchid', xlabel="training time", ylabel="loss", sa
     plt.savefig(save_name + "_{}".format(ylabel))
     plt.close()
 
-def save_data(data, header='data', save_dir="save_data"):
+def save_data(data, header='data', save_name="save_data"):
     '''save data into a .csv file
     data: list of data that need to be saved, (x1, x2, x3...)
     header: String that will be written at the beginning of the file.'''
-    np.savetxt(save_dir, data, header=header, delimiter=',', fmt="%10.5f", comments='')
+    np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
 
 def load_data(data_dir):
     '''Load variables' data from pre-saved .csv file
@@ -170,13 +185,12 @@ def load_data(data_dir):
     data = dict()
     for ind, row in enumerate(reader):
         if  ind == 0:
-            ipdb.set_trace()
             names = row
         else:
             data[names[ind-1]]= np.array(row).astype(np.float32)
     return data, names
 
-def smooth(x,window_len=11,window='hanning'):
+def smooth(x, window_len=11,window='hanning'):
     """smooth the data using a window with requested size.
     
     This method is based on the convolution of a scaled window with the signal.
@@ -196,8 +210,8 @@ def smooth(x,window_len=11,window='hanning'):
     NOTE: length(output) != length(input), to correct this: return y[(window_len/2-1):-(window_len/2)] instead of just y.
     """
 
-    if x.ndim != 1:
-        raise ValueError, "smooth only accepts 1 dimension arrays."
+    #if x.ndim != 1:
+        #raise ValueError, "smooth only accepts 1 dimension arrays."
 
     if x.size < window_len:
         raise ValueError, "Input vector needs to be bigger than window size."
@@ -217,6 +231,8 @@ def smooth(x,window_len=11,window='hanning'):
 
     y=np.convolve(w/w.sum(),s,mode='valid')
     return y
-if __name__ == "__main__":
-    data_dir = "data/train_data"
-    multiprocessing_func(data_dir)
+
+
+#if __name__ == "__main__":
+    #data_dir = "data/train_data"
+    #multiprocessing_func(data_dir)
