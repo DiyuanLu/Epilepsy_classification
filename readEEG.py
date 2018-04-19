@@ -40,7 +40,7 @@ def get_var(data):
 
     return variance
 
-def plotSpectrum(data,Fs):
+def plotSpectrum(data,Fs, color='c', label='x'):
     """
     Plots a Single-Sided Amplitude Spectrum of data(t)
     """
@@ -54,17 +54,17 @@ def plotSpectrum(data,Fs):
     Y = scifft(data)/n # fft computing and normalization
     Y = Y[range(n/2)]
 
-    plt.plot(frq,np.abs(Y),'orchid') # plotting the spectrum
+    plt.plot(frq,np.abs(Y), color, label=label) # plotting the spectrum
     plt.xlabel('Freq (Hz)')
     plt.ylabel('|Y(freq)|')
 
-def plotPowerSpectrum(data, Fs):
+def plotPowerSpectrum(data, Fs, color='m', label='x'):
     f, Pxx_den = signal.periodogram(data, Fs)
-    plt.semilogy(f, Pxx_den, 'royalblue')
+    plt.semilogy(f, Pxx_den, color, label=label)
     plt.xlabel('frequency [Hz]')
     plt.ylabel('PSD [V**2/Hz]')
 
-def plotWaveletSpectrum(data):
+def plotWaveletSpectrum(data, color='m', label='x'):
     cwtmatr = signal.cwt(data, signal.morlet, np.arange(1, 25))
     plt.imshow(cwtmatr, cmap='jet', aspect="auto")
     plt.xlabel("time")
@@ -72,50 +72,63 @@ def plotWaveletSpectrum(data):
     plt.title("Wavelet spectrogram")
     plt.colorbar()
 
-def plotOnePair(data1, data2):
+def plotOnePair(data11, data12, data21, data22):
     '''plot the original data-pair'''
     gs_top = plt.GridSpec(4, 1, hspace=0)
     gs_base = plt.GridSpec(4, 1)
     fig = plt.figure()
-    ### share x axis
+    ###fig.add_subplot(gs_base[0])
+    ###plt.plot(np.average(np.vstack((data1, data2)), axis=0), 'orchid', label='average')
+    ###plt.title("Average")
+    ## share x axis
     ax = fig.add_subplot(gs_top[0, :]) # Need to create the first one to share...
-    ax.plot(data1, 'orchid', label="data_1")
+    ax.plot(data11, 'c', label="non-focal")
+    ax.plot(data21, 'blueviolet', label="focal")
+    plt.legend()
     plt.setp(ax.get_xticklabels(), visible=False)
     plt.ylabel("recording/ mV")
     other_axes = [fig.add_subplot(gs_top[i,:], sharex=ax) for i in range(1, 2)]
-    other_axes[0].plot(data2, 'blueviolet', label="data_2")
+    other_axes[0].plot(data12, 'c', label="non-focal")
+    plt.plot(data22, 'blueviolet', label="focal")
+    plt.legend()
     plt.ylabel("recording/ mV")
     plt.xlim([0, 10240])
 
     fig.add_subplot(gs_base[2])
-    plotPowerSpectrum(data1, 1000)
+    plotPowerSpectrum(data11, 1000, color= 'c', label="non-focal")
+    plotPowerSpectrum(data21, 1000, color= 'blueviolet' , label="focal")
     plt.title("power spectrum")
+    plt.legend()
     plt.xlim([0, 100])
     plt.ylim([0.01, 10000])
     
     fig.add_subplot(gs_base[3])
-    plotSpectrum(data1,100)
+    plotSpectrum(data12,100, color= 'c', label="non-focal")
+    plotSpectrum(data22,100, color= 'blueviolet' , label="focal")
     plt.title("spectrum")
+    plt.legend()
     plt.xlim([0, 100])
     plt.tight_layout()
-    #plt.subplot(414)
-    #plotWaveletSpectrum(data1)
+
 
 
 def plotAllPairs(files):
     X_DATA, Y_DATA = np.array([])
 
-data_dir = "data/test_files/"
-files = func.find_files(data_dir, withlabel=False)
-for filename in files:
-    print filename
-    x_data, y_data = read_data(filename)
+##data_dir = "data/test_files/one"
+##files = func.find_files(data_dir, withlabel=False)
+for ind in range(21, 29):
+    files = ['data/test_files/Data_N_Ind30{}.csv'.format(np.str(ind)), 'data/test_files/Data_F_Ind30{}.csv'.format(np.str(ind))]
+    #for filename in files:
+        #print filename
+    x_data1, y_data1 = read_data(files[0])
+    x_data2, y_data2 = read_data(files[1])
     #fft, correlation = autocorrelation(x_data)
 
     #sd.play(x_data, 1000)
     #wavfile.write("results/audio/" + filename + "fs1000.wav", 1000, x_data)
     #ipdb.set_trace()
-    plotOnePair(x_data, y_data)
-    plt.savefig( filename[0:-4] +"_original.png")
+    plotOnePair(x_data1, y_data1, x_data2, y_data2)
+    plt.savefig( files[0][0:-4] +"compare_F_NF.png")
     plt.close()
 
