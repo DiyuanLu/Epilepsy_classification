@@ -30,11 +30,11 @@ seq_len = 1280   ##10240  #
 height, width = 28, 28 #seq_len, 1     # 
 batch_size = 100 # old: 16     20has a very good result
 n_classes = 10
-epochs = 500
-total_batches =  epochs * 3000 // batch_size + 1
+epochs = 200
+total_batches =  5001 #epochs * 3000 // batch_size + 1
 
 pattern='ds_8*.csv'
-version = 'whole_MNIST_RNN'                      #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### 
+version = 'whole_MNIST_fc2'                      #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTM
 results_dir= "results/" + version + '/batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
 if not os.path.exists(logdir):
@@ -66,11 +66,11 @@ def train(x):
         #ele_test = iter_test.get_next()   #you get the filename
 
     #### Constructing the network
-    #outputs = mod.fc_net(x, hid_dims=[500, 300, 100])
-    #outputs = mod.resi_net(x, hid_dims=[500, 300])
-    #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width)
-    #outputs = mod.DeepConvLSTM(x, num_filters=[64, 64], filter_size=5, num_lstm=128, seq_len=seq_len, width=width)
-    outputs = mod.RNN(x, num_lstm=256, seq_len=height, width=width)
+    #outputs = mod.fc_net(x, hid_dims=[500, 300])   ## 
+    #outputs = mod.resi_net(x, hid_dims=[500, 300])  ## ok very sfast
+    #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width)    ## ok
+    outputs = mod.DeepConvLSTM(x, num_filters=[64, 64], filter_size=5, num_lstm=128, seq_len=height, width=width)  ## ok
+    #outputs = mod.RNN(x, num_lstm=256, seq_len=height, width=width)   ##ok
     
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
@@ -138,7 +138,7 @@ def train(x):
             #ipdb.set_trace()
             #_, acc, c, sensi, speci, summary = sess.run([optimizer, accuracy, cost, sensitivity, specificity, summaries], feed_dict={x: batch_data, y: batch_labels})
             _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels})
-            if batch % 100 == 0:
+            if batch % 10 == 0:
                 print "batch",batch, 'loss', c, 'accuracy', acc
             writer.add_summary(summary, batch)
             ### record loss and accuracy
@@ -162,10 +162,8 @@ def train(x):
                
                 #test_temp = accuracy.eval({x: mnist.test.images, y: mnist.test.labels})mnist.test.images[image_indices[pair]]
                 test_data, test_labels = mnist.test.next_batch(batch_size)
-                test_temp, summary = sess.run([accuracy, summaries], {x: test_data, y: test_labels})   # test_acc_sum, sensitivity_sum, specificity_sum, 
+                test_temp = sess.run(accuracy, {x: test_data, y: test_labels})   # test_acc_sum, sensitivity_sum, specificity_sum, 
                 acc_total_test = np.append(acc_total_test, test_temp)
-                summary = sess.run(test_acc_sum, {test_acc: test_temp})    ## add test score to summary
-                writer.add_summary(summary, batch)
                 ########################################################
             if batch % save_every == 0:
                 saver.save(sess, logdir + '/batch' + str(batch))
