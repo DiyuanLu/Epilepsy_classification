@@ -19,7 +19,7 @@ version = "vae_CNN_MNIST"     ###"VAE_ds16"  #
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 data_dir = "data/train_data"
 data_dir_test = "data/test_data"
-ratio = 2
+ratio = 20
 save_every = 25 * ratio
 plot_every = 20 * ratio
 test_every = 5 * ratio
@@ -32,8 +32,8 @@ print_result = 10 * ratio
 height, width = 28, 28
 hid_dim1 = 500   # Encoder: input -- hidden1 -- latent1 -- hidden2 -- latent2
 hid_dim2 = 200
-latent_dim = 25
-batch_size = 16
+latent_dim = 2
+batch_size = 100
 epochs = 50
 total_batches =  epochs * 3000 // batch_size + 1
 results_dir = "results/" + version + '/' + datetime +'bs_' +np.str(batch_size)
@@ -55,25 +55,25 @@ def get_test_data():
     return test_data, test_labels
 
 
-def plot_prior(model_No, load_model=False, save_name='save_name'):
+def plot_prior(sess, load_model=False, save_name='save_name'):
     #if load_model:
         #saver.restore(sess, os.path.join(os.getcwd(), logdir + '/' + "{}".format(model_No)))
-    nx = ny = 5     
+    nx = ny = 4
     x_values = np.linspace(-3, 3, nx)
     y_values = np.linspace(-3, 3, ny)
     canvas = np.empty((height * ny, width * nx))
-    noise = tf.random_normal([1, latent_dim_2])
-    z = mu + tf.multiply(noise, tf.exp(0.5*logstd))
-    init = tf.global_variables_initializer()
-    sess = tf.InteractiveSession()
-    sess.run(init)
-
+    noise = tf.random_normal([1, latent_dim])
+    z = tf.placeholder(tf.float32, [1, latent_dim], 'dec_input')
+    reconstruction = decoder(z)
+    latent = np.random.randn(1, latent_dim)
+    #sess2 = tf.Session()
+    #sess2.run(tf.global_variables_initializer())
     for ii, yi in enumerate(x_values):
       for j, xi in enumerate(y_values):
-        z[0:2] = np.array([[xi, yi]])  #sess.run(reconstruction, {z_2: np_z, X: np_x_fixed})
-        x_reconstruction = reconstruction.eval(feed_dict={z: z})
+        latent[0, 0:2] = xi, yi  #sess.run(reconstruction, {z_2: np_z, X: np_x_fixed})
+        x_reconstruction = sess.run(reconstruction, feed_dict={z: latent})
         canvas[(nx - ii - 1) * height:(nx - ii) * height, j *
-               width:(j + 1) * width] = reconstruction[0].reshape(height, width)
+               width:(j + 1) * width] = x_reconstruction.reshape(height, width)
     plt.savefig(save_name, format="jpg")   # canvas
                         
 def upsample(inputs, name='depool', factor=[2,2]):
@@ -82,19 +82,14 @@ def upsample(inputs, name='depool', factor=[2,2]):
         out = tf.image.resize_bilinear(inputs, size=size, align_corners=None, name=None)
     return out
 
-def plot_test(reconstruction_test, load_model = False, save_name="save"):
+def plot_test(original, reconstruction, load_model = False, save_name="save"):
     # Here, we plot the reconstructed image on test set images.
     #if load_model:
         #saver.restore(sess, os.path.join(os.getcwd(), logdir + '/' + "{}".format(model_No)))
-
     num_pairs = 10
-    image_indices = np.random.randint(0, 200, num_pairs)
-    #Lets plot 10 digits
-    
     for pair in range(num_pairs):
         #reshaping to show original test image
-        x = np.reshape(mnist.test.images[image_indices[pair]], (1, height * width))
-        x_image = np.reshape(x, (28,28))
+        x_image = np.reshape(original[pair, :], (28,28))
         index = (1 + pair) * 2
         ax1 = plt.subplot(5,4,index - 1)  # arrange in 5*4 layout
         plt.imshow(x_image, aspect="auto")
@@ -102,9 +97,8 @@ def plot_test(reconstruction_test, load_model = False, save_name="save"):
             plt.title("Original")
         plt.xlim([0, 27])
         plt.ylim([27, 0])
-        #reconstructed image, feed the test image to the decoder
-        x_reconstruction = reconstruction.eval(feed_dict={input_dec: x})
-        x_reconstruction_image = (np.reshape(x_reconstruction, (28,28)))
+
+        x_reconstruction_image = np.reshape(reconstruction[pair, :], (28,28))
         ax2 = plt.subplot(5,4,index, sharex = ax1, sharey=ax1)
         plt.imshow(x_reconstruction_image, aspect="auto")
         plt.setp(ax2.get_yticklabels(), visible=False)
@@ -188,59 +182,7 @@ def encoder(inputs_enc, num_filters=[25], kernel_size=[5, 5], pool_size=[2, 2], 
         z_1 = mu_1 + tf.multiply(noise, tf.exp(0.5*sigma_1))
         print z_1.shape
         return mu_1, sigma_1, z_1     #dense1
-            
-        ## Convolutional Layer #1
-        ##with tf.name_scope("conv1"):
-            ##conv1 = tf.layers.conv1d(
-                                                        ##inputs = inputs_enc,
-                                                        ##filters = 8, #16,          #
-                                                        ##kernel_size = 5,            #[3, 3],        #
-                                                        ##padding = 'same',
-                                                        ##activation=tf.nn.relu)
-            ### Pooling Layer #1
-            ##pool1 = tf.layers.max_pooling1d(conv1, pool_size=2, strides=2)
-            ##print "conv1.shape", conv1.shape   # conv1.shape (?, 5120, 32)
-            ##print "pool1.shape", pool1.shape       # (?, 2560, 32)
-            ###pool1 = tf.layers.max_pooling2d(conv1, pool_size=[2, 2], padding='same' , strides=2)
-        ##with tf.name_scope("conv2"):
-            #### Convolutional Layer #2
-            ##conv2 = tf.layers.conv1d(
-                                                        ##inputs = pool1,
-                                                        ##filters = 4,
-                                                        ##kernel_size = 5,
-                                                        ##padding = 'same',
-                                                        ##activation=tf.nn.relu)
-            #### Pooling Layer #1
-            ##pool2 = tf.layers.max_pooling1d(conv2, pool_size=2, padding='same', strides=2)
-            ##print "conv2.shape", conv2.shape
-            ##print "pool2.shape", pool2.shape
-            ###### Conv 3
-            ###conv3 = tf.layers.conv1d(
-                                                        ###inputs = pool2,
-                                                        ###filters = 4,
-                                                        ###kernel_size = 5,
-                                                        ###padding = 'same',
-                                                        ###activation=tf.nn.tanh)
-            ##### Pooling Layer #1
-            ###pool3 = tf.layers.max_pooling1d(conv3, pool_size=2, padding='same', strides=2)
-            ###print "conv3.shape", conv3.shape
-            ###print "pool3.shape", pool3.shape
-            #pool2_flat = tf.reshape(pool2, [-1,  pool2.shape[1]*pool2.shape[2]])  # (?, 81920)
-            #dense1 = tf.layers.dense(inputs=pool2_flat, units=hid_dim1, activation=tf.nn.tanh)
-            #dropout1 = tf.layers.dropout(inputs=dense1, rate=0.75, name='dec_dropout1')
-            #print "dense1.shape", dense1.shape
-
-        #with tf.name_scope("dense"):
-            #### Get mu
-            #mu_1 = tf.contrib.layers.fully_connected(dropout1, latent_dim, activation_fn=None)
-            ## layer 2   Output mean and std of the latent variable distribution
-            #sigma_1 = tf.contrib.layers.fully_connected(dropout1, latent_dim, activation_fn=None)
-            ## Reparameterize import Randomness
-            #noise = tf.random_normal([1, latent_dim])
-            ## z_1 is the fisrt leverl output(latent variable) of our Encoder
-            #z_1 = mu_1 + tf.multiply(noise, tf.exp(0.5*sigma_1))
-            #print "z_1", z_1.shape
-        #return mu_1, sigma_1, z_1     #dense1                            #
+                                   #
 
 def decoder(inputs_dec, num_filters=[25, 1], kernel_size=5, scope=None):
     """Build a generative network parametrizing the likelihood of the data
@@ -279,52 +221,6 @@ def decoder(inputs_dec, num_filters=[25, 1], kernel_size=5, scope=None):
             
             return reconstruction
 
-                
-            ### Convolutional Layer #2
-            #deconv1 = tf.layers.conv1d(
-                                                        #inputs = dedense1,
-                                                        #filters = 4,
-                                                        #kernel_size = 5,
-                                                        #padding = 'same',
-                                                        #activation=tf.nn.relu)
-            ### Pooling Layer #1
-            #depool1 = tf.keras.layers.UpSampling1D(2)(deconv1)
-            #print "deconv1.shape", deconv1.shape
-            #print "depool1.shape", depool1.shape
-            #### Convolutional Layer #2
-            ##deconv2 = tf.layers.conv1d(
-                                                        ##inputs = depool1,
-                                                        ##filters = 4,
-                                                        ##kernel_size = 5,
-                                                        ##padding = 'same',
-                                                        ##activation=tf.nn.tanh)
-            #### Pooling Layer #1
-            ###depool2 = tf.keras.layers.UpSampling1D(2)(deconv2)
-            ##print "deconv2.shape", deconv2.shape
-            ##print "depool2.shape", depool2.shape
-            
-        ## Convolutional Layer #3
-            #deconv3 = tf.layers.conv1d(
-                                                            #inputs = depool1,
-                                                            #filters = 8,
-                                                            #kernel_size = 5,
-                                                            #padding = 'same',
-                                                            #activation=tf.nn.relu)
-            ### Pooling Layer #1
-            #depool3 = tf.keras.layers.UpSampling1D(2)(deconv3)
-            #print "deconv3.shape", deconv3.shape
-            #print "depool3.shape", depool3.shape
-            #### fc
-            #reconstruction = tf.layers.conv1d(
-                                                            #inputs = depool3,
-                                                            #filters = 1,
-                                                            #kernel_size = 5,
-                                                            #padding = 'same',
-                                                            #activation=tf.nn.sigmoid) #### OMG!!! Wrong activation
-            #reconstruction = tf.reshape(reconstruction, [-height, width])
-            #print "reconstruction.shape", reconstruction.shape      #reconstruction (?, 5120, 1)
-
-        #return reconstruction
 
 def train(input_enc):
     ##### Get data
@@ -403,14 +299,14 @@ def train(input_enc):
             #for ind in range(len(files_test)):
                 #data = np.average(func.read_data(files_test[ind][0]), axis=0)
                 #test_data = np.vstack((test_data, data))
-            reconstruction_test = reconstruction.eval(input_enc : test_data[0:16])
             test_temp = VAE_loss.eval({input_enc : test_data})
             test_vae_array = np.append(test_vae_array, test_temp)
-
+            
             summary = sess.run(test_loss_sum, {test_loss: test_temp})    ## add test score to summary
             writer.add_summary(summary)
+            reconstruction_test = reconstruction.eval({input_enc: test_data[0:10]})
             #every 1K iterations record these values
-            temp_vae = VAE_loss.eval(feed_dict={inputs_enc: batch_dagta})
+            temp_vae = VAE_loss.eval(feed_dict={inputs_enc: batch_data})
             temp_log = np.mean(Log_loss.eval(feed_dict={inputs_enc: batch_data}))
             temp_KL = np.mean(KL_loss.eval(feed_dict={inputs_enc: batch_data}))
             vae_loss_array.append(temp_vae )
@@ -423,14 +319,32 @@ def train(input_enc):
             saver.save(sess, logdir + '/' + str(batch) + '_model.ckpt')
 
         if (batch % plot_every == 0 and batch > 50):
+            #ipdb.set_trace()
+            plot_test(test_data[0:10], reconstruction_test, save_name=save_name + 'test_reconstruction.png')
+            #plot_prior(load_model=False, save_name = save_name + 'prior.png')
+            ########### plot prior
+            #ipdb.set_trace()
+            nx = ny = 4
+            x_values = np.linspace(-1, 1, nx)
+            y_values = np.linspace(-1, 1, ny)
+            canvas = np.zeros((height * ny, width * nx))
+            z_sample = tf.placeholder(tf.float32)
+            for ii, yi in enumerate(x_values):
+              for jj, xi in enumerate(y_values):
+                latent = np.array([[xi, yi]])  #sess.run(reconstruction, {z_2: np_z, X: np_x_fixed})
+                x_reconstruction = sess.run(reconstruction, feed_dict={z: latent})
+                canvas[ii * height:(ii+1) * height, jj *
+                       width:(jj + 1) * width] = x_reconstruction.reshape(height, width)
+            plt.savefig(save_name+'prior.png', format="jpg")   # canvas
+
+    
             #func.plot_smooth_shadow_curve([np.array(vae_loss_array), np.array(KL_loss_array), np.array(log_loss_array)], ylabel="accuracy", colors=['darkcyan', 'royalblue', 'indigo'], title='Losses during training', labels=['vae_loss', 'KL_loss', 'log_loss'], save_name=results_dir+ "/train_losses_dring_training_batch_{}".format(batch))
             
             #func.plot_smooth_shadow_curve(test_vae_array, colors='c', ylabel="loss", title='Loss in testing',labels='loss_test', save_name=results_dir+ "/test_loss_batch_{}".format(batch))
             ##ipdb.set_trace()
             func.save_data((vae_loss_array, KL_loss_array, log_loss_array), header='accuracy_train,loss_train,accuracy_test,sen_total_train,spe_total_train', save_name=results_dir + '/' +'3losses_class.csv')   ### the header names should be without space! TODO
-            plot_test(reconstruction_test, save_name=save_name + 'test_reconstruction.png')
-
-            plot_prior(batch, load_model=False)
+            
+            
             
             plt.figure()
             plt.plot(np.arange(len(vae_loss_array)), vae_loss_array, color = 'orchid', label='vae_los')

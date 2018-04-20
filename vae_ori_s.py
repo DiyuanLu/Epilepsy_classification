@@ -14,19 +14,21 @@ import datetime
 
 save_every = 5000
 plot_every = 5000
-num_iterations = 100001   # 50
-record_every = 100    # 1000   #
-test_every = 100   # check the loss on test set
+epochs = 50
+num_iterations = epochs * 55000 + 1   # 50
+record_every = 1000    # 1000   #
+test_every = 1000   # check the loss on test set
 n_pixels = 28 * 28
+height, width = 28, 28
 # HyperParameters
-latent_dim = 20
-h_dim = 500  # size of network
-batch_size = 200
+latent_dim = 2
+h_dim = 256  # size of network
+batch_size = 100
 version = "vae_ori_MNIST"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 data_dir = "training_data/MNIST_data"
 logdir = "results/" + version + '/' + datetime + "/model"
-results_dir = "results/" + version + '/' + datetime
+results_dir = "results/" + version + '/resi' + datetime
 if not os.path.exists(logdir):
     os.makedirs(logdir)
 if not os.path.exists(results_dir ):
@@ -50,20 +52,14 @@ def bias_variable(shape, name):
 def FC_Layer(X, W, b):
     return tf.matmul(X, W) + b
 
-def plot_test(model_No, load_model = False, save_name="save"):
+def plot_test(original, reconstruction, load_model = False, save_name="save"):
     # Here, we plot the reconstructed image on test set images.
-    if load_model:
-        saver.restore(sess, os.path.join(os.getcwd(), logdir + '/' + "{}".format(model_No)))
-
+    #if load_model:
+        #saver.restore(sess, os.path.join(os.getcwd(), logdir + '/' + "{}".format(model_No)))
     num_pairs = 10
-    image_indices = np.random.randint(0, 200, num_pairs)
-    #Lets plot 10 digits
-    
     for pair in range(num_pairs):
         #reshaping to show original test image
-        x = np.reshape(mnist.test.images[image_indices[pair]], (1,n_pixels))
-        x_image = np.reshape(x, (28,28))
-        
+        x_image = np.reshape(original[pair, :], (28,28))
         index = (1 + pair) * 2
         ax1 = plt.subplot(5,4,index - 1)  # arrange in 5*4 layout
         plt.imshow(x_image, aspect="auto")
@@ -71,12 +67,8 @@ def plot_test(model_No, load_model = False, save_name="save"):
             plt.title("Original")
         plt.xlim([0, 27])
         plt.ylim([27, 0])
-        
-        #reconstructed image, feed the test image to the decoder
-        x_reconstruction = reconstruction.eval(feed_dict={X: x})
-        #reshape it to 28x28 pixels
-        x_reconstruction_image = (np.reshape(x_reconstruction, (28,28)))
-        #plot it!
+
+        x_reconstruction_image = np.reshape(reconstruction[pair, :], (28,28))
         ax2 = plt.subplot(5,4,index, sharex = ax1, sharey=ax1)
         plt.imshow(x_reconstruction_image, aspect="auto")
         plt.setp(ax2.get_yticklabels(), visible=False)
@@ -85,37 +77,40 @@ def plot_test(model_No, load_model = False, save_name="save"):
         plt.tight_layout()
         if pair == 0 or pair == 1:
             plt.title("Reconstruct")
-    #ipdb.set_trace()
+            
     plt.subplots_adjust(left=0.06, bottom=0.05, right=0.95, top=0.95,
                 wspace=0.30, hspace=0.22)
     plt.savefig(save_name + "samples.png", format="png")
-
+    plt.close()
+   
 def plot_prior(model_No):
     if load_model:
         saver.restore(sess, os.path.join(os.getcwd(), logdir + '/' + "{}".format(model_No)))
     nx = ny = 5     
-    x_values = np.linspace(-3, 3, nx)
-    y_values = np.linspace(-3, 3, ny)
+    x_values = np.linspace(0.05, 0.95, nx)
+    y_values = np.linspace(0.05, 0.95, ny)
+
+    f, axes = plt.subplots(nx, ny, sharex=True, sharey=True)
+    for ind, ax in enumerate(axes):
+        ax.imshow()
+    ax1.plot(x, y)
+    ax1.set_title('Sharing both axes')
+    ax2.scatter(x, y)
+    ax3.scatter(x, 2 * y ** 2 - 1, color='r')
+    # Fine-tune figure; make subplots close to each other and hide x ticks for
+    # all but bottom plot.
+    f.subplots_adjust(hspace=0)
+    plt.setp([a.get_xticklabels() for a in f.axes[:-1]], visible=False)
+
+
     canvas = np.empty((28 * ny, 28 * nx))
     noise = tf.random_normal([1, 20])
-    z = mu + tf.multiply(noise, tf.exp(0.5*logstd))
-    ipdb.set_trace()
+    z = mu + tf.multiply(noise, tf.exp(0.5*sigma))
     for ii, yi in enumerate(x_values):
       for j, xi in enumerate(y_values):
         z[0:2] = np.array([[xi, yi]])
         x_reconstruction = reconstruction.eval(feed_dict={z: z})
-        ## layer 1
-        #W_dec = weight_variables([latent_dim, h_dim], "W_dec")
-        #b_dec = bias_variable([h_dim], "b_dec")
-        ## tanh - decode the latent representation
-        #h_dec = tf.nn.tanh(FC_Layer(z, W_dec, b_dec))
 
-        ## layer2 - reconstruction the image and output 0 or 1
-        #W_rec = weight_variables([h_dim, n_pixels], "W_dec")
-        #b_rec = bias_variable([n_pixels], "b_rec")
-        ## 784 bernoulli parameter Output
-        #reconstruction = tf.nn.sigmoid(FC_Layer(h_dec, W_rec, b_rec))
-    
         canvas[(nx - ii - 1) * 28:(nx - ii) * 28, j *
                28:(j + 1) * 28] = reconstruction[0].reshape(28, 28)
     imsave(os.path.join(logdir,
@@ -126,51 +121,77 @@ def plot_prior(model_No):
 def encoder(X):
     # layer 1
     with tf.name_scope('Encoder'):
-        W_enc = weight_variables([n_pixels, h_dim], "W_enc")
-        b_enc = bias_variable([h_dim], "b_enc")
-        # tanh - activation function        avoid vanishing gradient in generative models
-        h_enc = tf.nn.tanh(FC_Layer(X, W_enc, b_enc))
+        net = tf.contrib.layers.fully_connected(X, 300, activation_fn=tf.nn.tanh)
+        #### high-way net
+        H = tf.layers.dense(net, units=num_outputs, activation=tf.nn.relu, name="denseH1")
+        T = tf.layers.dense(net, units=num_outputs, activation=tf.nn.sigmoid, name="denseT1")
+        C = 1. - T
+        net = H * T + net * C
+        ####
+        net = tf.contrib.layers.fully_connected(net, 128, activation_fn=tf.nn.tanh)
+        #### high-way net
+        H = tf.layers.dense(net, units=num_outputs, activation=tf.nn.relu, name="denseH1")
+        T = tf.layers.dense(net, units=num_outputs, activation=tf.nn.sigmoid, name="denseT1")
+        C = 1. - T
+        net = H * T + net * C
+        ####
+        mu = tf.contrib.layers.fully_connected(net, latent_dim, activation_fn=None, scope='mu_fc')
+        sigma = tf.contrib.layers.fully_connected(net, latent_dim, activation_fn=None, scope='sigma_fc')
+        ##### detailed structure#########
+        #W_enc = weight_variables([n_pixels, h_dim], "W_enc")
+        #b_enc = bias_variable([h_dim], "b_enc")
+        ## tanh - activation function        avoid vanishing gradient in generative models
+        #h_enc = tf.nn.tanh(FC_Layer(X, W_enc, b_enc))
 
         # layer 2   Output mean and std of the latent variable distribution
-        W_mu = weight_variables([h_dim, latent_dim], "W_mu")
-        b_mu = bias_variable([latent_dim], "b_mu")
-        mu = FC_Layer(h_enc, W_mu, b_mu)
-
-        W_logstd = weight_variables([h_dim, latent_dim], "W_logstd")
-        b_logstd = bias_variable([latent_dim], "b_logstd")
-        logstd = FC_Layer(h_enc, W_logstd, b_logstd)
+        #W_mu = weight_variables([h_dim, latent_dim], "W_mu")
+        #b_mu = bias_variable([latent_dim], "b_mu")
+        #mu = FC_Layer(h_enc, W_mu, b_mu)
+        
+        #W_sigma = weight_variables([h_dim, latent_dim], "W_sigma")
+        #b_sigma = bias_variable([latent_dim], "b_sigma")
+        #sigma = FC_Layer(h_enc, W_sigma, b_sigma)
 
 
         # Reparameterize import Randomness
         noise = tf.random_normal([1, latent_dim])
         # z is the ultimate output(latent variable) of our Encoder
-        z = mu + tf.multiply(noise, tf.exp(0.5*logstd))
-        return mu, logstd, z
+        z = mu + tf.multiply(noise, tf.exp(0.5*sigma))
+        return mu, sigma, z
 
 ############################ Dencoder ############################
 def decoder(z):
     '''Z: random_input 1d(latent_dim,)'''
     # layer 1
     with tf.name_scope('Decoder'):
-        W_dec = weight_variables([latent_dim, h_dim], "W_dec")
-        b_dec = bias_variable([h_dim], "b_dec")
-        # tanh - decode the latent representation
-        h_dec = tf.nn.tanh(FC_Layer(z, W_dec, b_dec))
+        net = tf.contrib.layers.fully_connected(z, 128, activation_fn=tf.nn.tanh)
+        #### high-way net
+        H = tf.layers.dense(net, units=num_outputs, activation=tf.nn.relu, name="denseH1")
+        T = tf.layers.dense(net, units=num_outputs, activation=tf.nn.sigmoid, name="denseT1")
+        C = 1. - T
+        net = H * T + net * C
+        ####
+        net = tf.contrib.layers.fully_connected(net, 300, activation_fn=tf.nn.tanh)
+        reconstruction = tf.contrib.layers.fully_connected(net, n_pixels, activation_fn=tf.nn.sigmoid, scope='recon')
+        #W_dec = weight_variables([latent_dim, h_dim], "W_dec")
+        #b_dec = bias_variable([h_dim], "b_dec")
+        ## tanh - decode the latent representation
+        #h_dec = tf.nn.tanh(FC_Layer(z, W_dec, b_dec))
 
         # layer2 - reconstruction the image and output 0 or 1
-        W_rec = weight_variables([h_dim, n_pixels], "W_dec")
-        b_rec = bias_variable([n_pixels], "b_rec")
-        # 784 bernoulli parameter Output
-        reconstruction = tf.nn.sigmoid(FC_Layer(h_dec, W_rec, b_rec))
+        #W_rec = weight_variables([h_dim, n_pixels], "W_dec")
+        #b_rec = bias_variable([n_pixels], "b_rec")
+        ## 784 bernoulli parameter Output
+        #reconstruction = tf.nn.sigmoid(FC_Layer(h_dec, W_rec, b_rec))
         return reconstruction
 
 # Loss function = reconstruction error + regularization(similar image's latent representation close)
 def train(X):
-    mu, logstd, z = encoder(X)
+    mu, sigma, z = encoder(X)
     reconstruction = decoder(z)
     with tf.name_scope('loss'):
         Log_loss = tf.reduce_sum(X * tf.log(reconstruction + 1e-9) + (1 - X) * tf.log(1 - reconstruction + 1e-9), reduction_indices=1)
-        KL_loss = -0.5 * tf.reduce_sum(1 + 2*logstd - tf.pow(mu, 2) - tf.exp(2 * logstd), reduction_indices=1)
+        KL_loss = -0.5 * tf.reduce_sum(1 + 2*sigma - tf.pow(mu, 2) - tf.exp(2 * sigma), reduction_indices=1)
         VAE_loss = tf.reduce_mean(Log_loss - KL_loss)
         
     #Outputs a Summary protocol buffer containing a single scalar value.
@@ -212,6 +233,7 @@ def train(X):
             vae_temp = VAE_loss.eval({X : mnist.test.images[0:200]})
             test_vae_array = np.append(test_vae_array, vae_temp)
             summary = sess.run(test_loss_sum, {test_loss: vae_temp})    ## add test score to summary
+            recon_test = sess.run(reconstruction, {X : mnist.test.images[0:10]})    ## add test score to summary
             writer.add_summary(summary, i%test_every)
         if (i % record_every == 0):
             #every 1K iterations record these value
@@ -227,15 +249,40 @@ def train(X):
             saver.save(sess, logdir + '/' + str(i))
             
 
-        if (i % plot_every == 0):
+        if (i % plot_every == 0 and i>plot_every):
+            #ipdb.set_trace()
             #plot_prior(model_No)
-            #plot_test(i, save_name=save_name)
-            
+            plot_test(mnist.test.images[0:10], recon_test, save_name=save_name+'test_recon.png')
+
+            ### prior
+            nx = ny = 16
+            x_values = np.linspace(-1, 1, nx)
+            y_values = np.linspace(-1, 1, ny)
+            canvas = np.zeros((height * ny, width * nx))
+            z_sample = tf.placeholder(tf.float32)
+            for ii, yi in enumerate(x_values):
+              for jj, xi in enumerate(y_values):
+                latent = np.array([[xi, yi]])  #sess.run(reconstruction, {z_2: np_z, X: np_x_fixed})
+                x_reconstruction = sess.run(reconstruction, feed_dict={z: latent})
+                canvas[ii * height:(ii+1) * height, jj *
+                       width:(jj + 1) * width] = x_reconstruction.reshape(height, width)
+            imsave(save_name+'prior.png', canvas, format='png')
+
+            ########## cluster the latent
+            # a 2d plot of 10 digit classes in latent space
+            x_test, y_test = mnist.test.next_batch(5000)
+            x_test_encoded=z.eval({X: x_test})
+            plt.figure(figsize=(6,6))
+            plt.scatter(x_test_encoded[:,0], x_test_encoded[:,1], c=y_test.argmax(1))
+            plt.colorbar()
+            plt.savefig(save_name + 'latent cluster.png', format='png')
+            plt.close()
+            ########## plot the losses
             plt.figure()
-            plt.plot(np.arange(len(vae_loss_array)), color = 'darkmagenta', vae_loss_array)
-            plt.plot(np.arange(len(vae_loss_array)), color = 'slateblue',  KL_term_array)
-            plt.plot(np.arange(len(vae_loss_array)), color = 'darkcyan',  log_loss_array)
-            plt.legend(['Variational Lower Bound', 'KL divergence', 'Log Likelihood'], bbox_to_anchor=(1.05, 1), loc=2)
+            plt.plot(np.arange(len(vae_loss_array)), vae_loss_array, color = 'darkmagenta')
+            plt.plot(np.arange(len(vae_loss_array)),  KL_term_array, color = 'slateblue')
+            plt.plot(np.arange(len(vae_loss_array)),  log_loss_array, color = 'darkcyan')
+            plt.legend(['Variational Lower Bound', 'KL divergence', 'Log Likelihood'], loc='best')
             plt.xlabel("training batches/100")
             plt.title('Loss per iteration')
             plt.savefig(save_name+"_iter{}_loss.png".format(i), format="png")
@@ -254,3 +301,9 @@ Iteration: 69000, Loss: -229.900802612, log_loss: -201.257736206, KL_term26.7798
 Iteration: 99500, Loss: -209.463882446, log_loss: -186.51159668, KL_term24.2162322998
 Iteration: 100000, Loss: -209.921600342, log_loss: -184.041793823, KL_term24.8351421356
 '''
+'''
+Tight structure
+Iteration: 1000, Loss: -543.84564209, log_loss: -543.168212891, KL_term0.70369374752
+Iteration: 10000, Loss: -460.915893555, log_loss: -440.416870117, KL_term11.686624527
+Iteration: 20000, Loss: -282.152435303, log_loss: -250.388717651, KL_term29.1655445099
+Iteration: 30000, Loss: -240.628707886, log_loss: -224.83052063, KL_term21.1300430298'''

@@ -129,6 +129,7 @@ for ind in range(21, 29):
     #wavfile.write("results/audio/" + filename + "fs1000.wav", 1000, x_data)
     #ipdb.set_trace()
     plotOnePair(x_data1, y_data1, x_data2, y_data2)
-    plt.savefig( files[0][0:-4] +"compare_F_NF.png")
-    plt.close()
+    plt.show()
+    #plt.savefig( files[0][0:-4] +"compare_F_NF.png")
+    #plt.close()
 

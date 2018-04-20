@@ -25,8 +25,8 @@ epochs = 200
 total_batches =  epochs * 3000 // batch_size + 1 #5001               #
 
 pattern='ds_8*.csv'
-version = 'whole_{}_resi'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
-results_dir= "results/" + version + '/batch{}/' .format(batch_size)+ datetime
+version = 'whole_MNIST_RNN'              #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
+results_dir= "results/2-MNIST_checks/" + version + '/batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
 if not os.path.exists(logdir):
     os.makedirs(logdir)
@@ -44,9 +44,9 @@ def train(x):
     #### Constructing the network
     #outputs = mod.fc_net(x, hid_dims=[500, 300])   ## 
     #outputs = mod.resi_net(x, hid_dims=[500, 300])  ## ok very sfast
-    outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width)    ## ok
+    #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width)    ## ok
     #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64, 64], filter_size=5, num_lstm=128, seq_len=height, width=width)  ## ok
-    #outputs = mod.RNN(x, num_lstm=256, seq_len=height, width=width)   ##ok
+    outputs = mod.RNN(x, num_lstm=256, seq_len=height, width=width)   ##ok
     
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")

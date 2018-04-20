@@ -26,14 +26,14 @@ if  ifaverage:
 else:
     width = 2
 
-batch_size = 64 # old: 16     20has a very good result
+batch_size = 20 # old: 16     20has a very good result
 num_classes = 2
 epochs = 200
 total_batches =  epochs * 3000 // batch_size + 1 #5001               #
 
 pattern='ds_8*.csv'
-version = 'whole_{}_RNN'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
-results_dir= "results/" + version + '/batch{}/' .format(batch_size)+ datetime
+version = 'whole_{}_resi'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
+results_dir= "results/" + version + '/batch_norm_batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
 if not os.path.exists(logdir):
     os.makedirs(logdir)
@@ -65,10 +65,10 @@ def train(x):
 
     #### Constructing the network
     #outputs = mod.fc_net(x, hid_dims=[500, 300])   ## 
-    #outputs = mod.resi_net(x, hid_dims=[500, 300])  ## ok very sfast
+    outputs = mod.resi_net(x, hid_dims=[500, 300])  ## ok very sfast
     #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width)    ## ok
     #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64, 64], filter_size=5, num_lstm=128, seq_len=height, width=width)  ## ok
-    outputs = mod.RNN(x, num_lstm=256, seq_len=height, width=width)   ##ok
+    #outputs = mod.RNN(x, num_lstm=128, seq_len=height, width=width)   ##ok
     
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
@@ -152,7 +152,7 @@ def train(x):
                 acc_total_test = np.append(acc_total_test, test_temp)
                 ########################################################
             if batch % 10 == 0:
-                print "batch",batch, 'loss', c, 'train-accuracy', acc, 'test-accuracy', test_temp
+                print "batch:",batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', test_temp
             if batch % save_every == 0:
                 saver.save(sess, logdir + '/batch' + str(batch))
 
@@ -162,7 +162,7 @@ def train(x):
                 
                 func.plot_smooth_shadow_curve([loss_total_train], colors=['c'], xlabel= 'training batches / {}'.format(batch_size), ylabel="loss", title='Loss in training',labels=['training loss'], save_name=results_dir+ "/training_loss_batch_{}".format(batch))
 
-                func.save_data((acc_total_train, loss_total_train, acc_total_test, sen_total_train, spe_total_train), header='accuracy_train,loss_train,accuracy_test,sen_total_train,spe_total_train', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
+                func.save_data((acc_total_train, loss_total_train, acc_total_test), header='accuracy_train,loss_train,accuracy_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
         #np.savetxt('outliers.csv', outliers, fmt='%s', newline= ', ', delimiter=',')
 
 

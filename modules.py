@@ -8,17 +8,18 @@ num_classes = 2
 def dense_net(x):
     '''with dense and dropout
     x: 2d array Batch_size * samples'''
-    dense1 = tf.layers.dense(inputs=x, units=1024, activation=tf.nn.relu)
-    dropout1 = tf.layers.dropout(inputs=dense1, rate=0.5)
-    dense2 = tf.layers.dense(inputs=dropout1, units= 512, activation=tf.nn.relu)
-    dropout2 = tf.layers.dropout(inputs=dense2, rate=0.5)
-    dense3 = tf.layers.dense(inputs=x, units=64, activation=tf.nn.relu)
-    dropout3 = tf.layers.dropout(inputs=dense3, rate=0.5)
+    net = tf.layers.flatten(x)
+    net  = tf.layers.dense(inputs=net , units=1024, activation=tf.nn.relu)
+    net  = tf.layers.dropout(inputs=net , rate=0.5)
+    net  = tf.layers.dense(inputs=net , units= 512, activation=tf.nn.relu)
+    net  = tf.layers.dropout(inputs=net , rate=0.5)
+    net  = tf.layers.dense(inputs=net , units=64, activation=tf.nn.relu)
+    net  = tf.layers.dropout(inputs=net , rate=0.5)
 
-    return dropout
+    return net 
     
 def fc_net(x, hid_dims=[500, 300, 100]):
-    net = x
+    net = tf.layers.flatten(x)
     # Convolutional Layer 
     for layer_id, num_outputs in enumerate(hid_dims):   ## avoid the code repetation
         with tf.variable_scope('fc_{}'.format(layer_id)) as layer_scope:
@@ -35,6 +36,10 @@ def fc_net(x, hid_dims=[500, 300, 100]):
                                                                     net,
                                                                     num_classes,
                                                                     activation_fn=tf.nn.sigmoid)
+            net = tf.contrib.layers.batch_norm(
+                                                                net,
+                                                                center = True,
+                                                                scale = True)
             tf.summary.histogram('activation', net)
             return net
            
@@ -51,6 +56,10 @@ def resi_net(x, hid_dims=[500, 300]):
                                                                     net,
                                                                     num_outputs,
                                                                     activation_fn=tf.nn.relu)
+            net = tf.contrib.layers.batch_norm(
+                                                                net,
+                                                                center = True,
+                                                                scale = True)
             #### high-way net
             H = tf.layers.dense(net, units=num_outputs, activation=tf.nn.relu, name="denseH1")
             T = tf.layers.dense(net, units=num_outputs, activation=tf.nn.sigmoid, name="denseT1")
@@ -67,6 +76,10 @@ def resi_net(x, hid_dims=[500, 300]):
                                                                             net,
                                                                             num_classes,
                                                                             activation_fn=tf.nn.sigmoid)
+                net = tf.contrib.layers.batch_norm(
+                                                                net,
+                                                                center = True,
+                                                                scale = True)
         return outputs
         
 def CNN(x, num_filters=[16, 32, 64], seq_len=10240, width=1):
