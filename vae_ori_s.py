@@ -5,7 +5,7 @@ matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import time #lets clock training time..
 import os
-from scipy.misc import imsave
+import Image
 #import data
 #from tensorflow.examples.tutorials.mnist import input_data    # DOWNLOAD DATA
 from tensorflow.contrib.learn.python.learn.datasets.mnist import read_data_sets    #read data
@@ -13,7 +13,7 @@ import ipdb
 import datetime
 
 save_every = 5000
-plot_every = 5000
+plot_every = 500
 epochs = 50
 num_iterations = epochs * 55000 + 1   # 50
 record_every = 1000    # 1000   #
@@ -28,12 +28,12 @@ version = "vae_ori_MNIST"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 data_dir = "training_data/MNIST_data"
 logdir = "results/" + version + '/' + datetime + "/model"
-results_dir = "results/" + version + '/resi' + datetime
+results_dir = "results/" + version + '/' + datetime
 if not os.path.exists(logdir):
     os.makedirs(logdir)
 if not os.path.exists(results_dir ):
     os.makedirs(results_dir )
-    
+print results_dir
 # load data
 mnist = read_data_sets(data_dir, one_hot=True)
 
@@ -116,27 +116,27 @@ def plot_prior(model_No):
     imsave(os.path.join(logdir,
                         'prior_predictive_map_frame_%d.png' % model_No), canvas)
 ############################ Encoder ############################
-
-
 def encoder(X):
+    '''fully  connected encoder with residual connections
+    X: [batch, height*width]'''
     # layer 1
     with tf.name_scope('Encoder'):
-        net = tf.contrib.layers.fully_connected(X, 300, activation_fn=tf.nn.tanh)
+        net = tf.layers.dense(inputs=X, units=h_dim, activation=tf.nn.relu)
         #### high-way net
-        H = tf.layers.dense(net, units=num_outputs, activation=tf.nn.relu, name="denseH1")
-        T = tf.layers.dense(net, units=num_outputs, activation=tf.nn.sigmoid, name="denseT1")
-        C = 1. - T
-        net = H * T + net * C
+        #H = tf.layers.dense(net, units=300, activation=tf.nn.relu, name="enH1")
+        #T = tf.layers.dense(net, units=300, activation=tf.nn.sigmoid, name="enT1")
+        #C = 1. - T
+        #net = H * T + net * C
+        #####
+        #net = tf.contrib.layers.fully_connected(net, 128, activation_fn=tf.nn.tanh)
+        ##### high-way net
+        #H = tf.layers.dense(net, units=128, activation=tf.nn.relu, name="enH2")
+        #T = tf.layers.dense(net, units=128, activation=tf.nn.sigmoid, name="enT2")
+        #C = 1. - T
+        #net = H * T + net * C
         ####
-        net = tf.contrib.layers.fully_connected(net, 128, activation_fn=tf.nn.tanh)
-        #### high-way net
-        H = tf.layers.dense(net, units=num_outputs, activation=tf.nn.relu, name="denseH1")
-        T = tf.layers.dense(net, units=num_outputs, activation=tf.nn.sigmoid, name="denseT1")
-        C = 1. - T
-        net = H * T + net * C
-        ####
-        mu = tf.contrib.layers.fully_connected(net, latent_dim, activation_fn=None, scope='mu_fc')
-        sigma = tf.contrib.layers.fully_connected(net, latent_dim, activation_fn=None, scope='sigma_fc')
+        mu = tf.layers.dense(inputs=net, units=latent_dim, activation=None)
+        sigma = tf.layers.dense(inputs=net, units=latent_dim, activation=None)
         ##### detailed structure#########
         #W_enc = weight_variables([n_pixels, h_dim], "W_enc")
         #b_enc = bias_variable([h_dim], "b_enc")
@@ -164,15 +164,21 @@ def decoder(z):
     '''Z: random_input 1d(latent_dim,)'''
     # layer 1
     with tf.name_scope('Decoder'):
-        net = tf.contrib.layers.fully_connected(z, 128, activation_fn=tf.nn.tanh)
-        #### high-way net
-        H = tf.layers.dense(net, units=num_outputs, activation=tf.nn.relu, name="denseH1")
-        T = tf.layers.dense(net, units=num_outputs, activation=tf.nn.sigmoid, name="denseT1")
-        C = 1. - T
-        net = H * T + net * C
+        net = tf.layers.dense(inputs=z, units=h_dim, activation=tf.nn.relu)
+        ##### high-way net
+        #H = tf.layers.dense(net, units=128, activation=tf.nn.relu, name="deH1")
+        #T = tf.layers.dense(net, units=128, activation=tf.nn.sigmoid, name="deT1")
+        #C = 1. - T
+        #net = H * T + net * C
+        #####
+        #net = tf.contrib.layers.fully_connected(net, 300, activation_fn=tf.nn.tanh)
+        ##### high-way net
+        #H = tf.layers.dense(net, units=300, activation=tf.nn.relu, name="deH2")
+        #T = tf.layers.dense(net, units=300, activation=tf.nn.sigmoid, name="deT2")
+        #C = 1. - T
+        #net = H * T + net * C
         ####
-        net = tf.contrib.layers.fully_connected(net, 300, activation_fn=tf.nn.tanh)
-        reconstruction = tf.contrib.layers.fully_connected(net, n_pixels, activation_fn=tf.nn.sigmoid, scope='recon')
+        reconstruction = tf.layers.dense(inputs=net, units=n_pixels, activation=tf.nn.sigmoid)
         #W_dec = weight_variables([latent_dim, h_dim], "W_dec")
         #b_dec = bias_variable([h_dim], "b_dec")
         ## tanh - decode the latent representation
@@ -185,12 +191,101 @@ def decoder(z):
         #reconstruction = tf.nn.sigmoid(FC_Layer(h_dec, W_rec, b_rec))
         return reconstruction
 
+############################# COnv Encoder ############################
+#def encoder(X, num_filters=[32, 64, 64]):
+    #'''parameters from
+    #https://www.kaggle.com/rvislaywade/visualizing-mnist-using-a-variational-autoencoder
+    #Conv encoder
+    #Param:
+        #X:  A batch of real data (MNIST digits).
+        #latent_dim: The latent dimensionality.
+        #hidden_size: The size of the neural net hidden layers.
+    #Returns:
+        #mu: Mean parameters for the variational family Normal
+        #sigma: Standard deviation parameters for the variational family Normal
+    #often in convolution padding = 'same', in max_pooling padding = 'valid'''
+    #with tf.name_scope("enc_conv"):
+        #net = tf.reshape(X, [-1, height, width, 1])
+        #net = tf.layers.conv2d(
+                                                #inputs = net,
+                                                #filters = 32,
+                                                #kernel_size = [3, 3],
+                                                #padding = 'same',
+                                                #activation=tf.nn.relu)
+        #print net.shape
+        #net = tf.layers.conv2d(
+                                                #inputs = net,
+                                                #filters = 64,
+                                                #kernel_size = [3, 3],
+                                                #padding = 'same',
+                                                #strides = (2, 2),
+                                                #activation=tf.nn.relu)
+        #print net.shape
+        #net = tf.layers.conv2d(
+                                                #inputs = net,
+                                                #filters = 64,
+                                                #kernel_size = [3, 3],
+                                                #padding = 'same',
+                                                #activation=tf.nn.relu)
+        ##print net.shape
+        ##net = tf.layers.conv2d(
+                                                ##inputs = net,
+                                                ##filters = 64,
+                                                ##kernel_size = [3, 3],
+                                                ##padding = 'same',
+                                                ##activation=tf.nn.relu)
+        #print net.shape
+    #with tf.name_scope("dense_enc"):
+        #shape_b4_flatten = net.get_shape().as_list()[1:]
+        #print "shape_b4_flatten", shape_b4_flatten
+        #net = tf.layers.flatten(net)
+        #print net.shape
+        #net = tf.layers.dense(inputs=net, units=32, activation=tf.nn.relu)
+        #print net.shape
+        #mu = tf.layers.dense(inputs=net, units=latent_dim, activation=None)
+        #sigma = tf.layers.dense(inputs=net, units=latent_dim, activation=None)
+         ## Reparameterize import Randomness
+        #noise = tf.random_normal([1, latent_dim])
+        ## z is the ultimate output(latent variable) of our Encoder
+        #z = mu + tf.multiply(noise, tf.exp(0.5*sigma))
+        #return mu, sigma, z, shape_b4_flatten
+        
+############################# Conv Dencoder ############################
+#def decoder(z, shape_b4_flatten ):
+    #'''Conv decoder
+    #z: [batch, latent_dim]'''
+    #with tf.name_scope("conv_decoder"):
+        ####
+        #print "####### decoder"
+        ##ipdb.set_trace()
+        #dense_shape = shape_b4_flatten[0]*shape_b4_flatten[1]*shape_b4_flatten[2]
+        #net = tf.layers.dense(inputs=z, units=dense_shape, activation=tf.nn.relu)
+        #net = tf.reshape(net, [-1, shape_b4_flatten[0], shape_b4_flatten[1], shape_b4_flatten[2]])
+        #net = tf.layers.conv2d_transpose(
+                                                                   #inputs = net,
+                                                                    #filters = 32,
+                                                                    #kernel_size = [3, 3],
+                                                                    #padding = 'same',
+                                                                    #strides = (2, 2),
+                                                                    #activation=tf.nn.relu)
+        #print net.shape
+        #net = tf.layers.conv2d(
+                                                #inputs = net,
+                                                #filters = 1,
+                                                #kernel_size = [3, 3],
+                                                #padding = 'same',
+                                                #activation = tf.nn.sigmoid)
+        #print net.shape         ##########(?, 28, 28, 1)
+        #net = tf.layers.flatten(net)
+        #return net
+        
 # Loss function = reconstruction error + regularization(similar image's latent representation close)
 def train(X):
     mu, sigma, z = encoder(X)
     reconstruction = decoder(z)
     with tf.name_scope('loss'):
         Log_loss = tf.reduce_sum(X * tf.log(reconstruction + 1e-9) + (1 - X) * tf.log(1 - reconstruction + 1e-9), reduction_indices=1)
+        #Log_loss = tf.reduce_sum(tf.keras.losses.binary_crossentropy(X, reconstruction)) 
         KL_loss = -0.5 * tf.reduce_sum(1 + 2*sigma - tf.pow(mu, 2) - tf.exp(2 * sigma), reduction_indices=1)
         VAE_loss = tf.reduce_mean(Log_loss - KL_loss)
         
@@ -256,8 +351,8 @@ def train(X):
 
             ### prior
             nx = ny = 16
-            x_values = np.linspace(-1, 1, nx)
-            y_values = np.linspace(-1, 1, ny)
+            x_values = np.linspace(0.05, 0.95, nx)
+            y_values = np.linspace(0.05, 0.95, ny)
             canvas = np.zeros((height * ny, width * nx))
             z_sample = tf.placeholder(tf.float32)
             for ii, yi in enumerate(x_values):
@@ -266,7 +361,9 @@ def train(X):
                 x_reconstruction = sess.run(reconstruction, feed_dict={z: latent})
                 canvas[ii * height:(ii+1) * height, jj *
                        width:(jj + 1) * width] = x_reconstruction.reshape(height, width)
-            imsave(save_name+'prior.png', canvas, format='png')
+            plt.imshow(canvas)
+            plt.savefig(save_name+"_prior.png", format="png")
+            plt.close()
 
             ########## cluster the latent
             # a 2d plot of 10 digit classes in latent space
@@ -303,7 +400,25 @@ Iteration: 100000, Loss: -209.921600342, log_loss: -184.041793823, KL_term24.835
 '''
 '''
 Tight structure
+Iteration: 0, Loss: -545.54510498, log_loss: -544.708496094, KL_term1.22323262691
 Iteration: 1000, Loss: -543.84564209, log_loss: -543.168212891, KL_term0.70369374752
 Iteration: 10000, Loss: -460.915893555, log_loss: -440.416870117, KL_term11.686624527
 Iteration: 20000, Loss: -282.152435303, log_loss: -250.388717651, KL_term29.1655445099
-Iteration: 30000, Loss: -240.628707886, log_loss: -224.83052063, KL_term21.1300430298'''
+Iteration: 30000, Loss: -240.628707886, log_loss: -224.83052063, KL_term21.1300430298
+Iteration: 240000, Loss: -200.894180298, log_loss: -191.924041748, KL_term7.26480531693
+Iteration: 250000, Loss: -198.974182129, log_loss: -191.537963867, KL_term6.95165205002
+
+'''
+
+'''
+Tight_resi
+Iteration: 0, Loss: -543.70501709, log_loss: -543.341003418, KL_term0.119708031416
+Iteration: 1000, Loss: -543.204040527, log_loss: -543.199584961, KL_term0.086833640933
+Iteration: 10000, Loss: -418.716339111, log_loss: -437.603118896, KL_term13.6256456375
+Iteration: 12000, Loss: -253.138717651, log_loss: -243.541442871, KL_term17.1780071259
+Iteration: 30000, Loss: -208.114212036, log_loss: -204.98387146, KL_term5.72965431213
+Iteration: 40000, Loss: -219.733352661, log_loss: -204.187011719, KL_term4.81987428665
+Iteration: 50000, Loss: -203.907104492, log_loss: -198.388320923, KL_term4.72220468521
+Iteration: 60000, Loss: -202.646682739, log_loss: -196.731491089, KL_term4.66666889191
+
+'''

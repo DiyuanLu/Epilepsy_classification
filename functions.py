@@ -102,6 +102,36 @@ def get_Data(data_dir, data_dir_test, batch_size=20, pattern='*.csv', withlabel=
         ele_test = iter_test.get_next()   #you get the filename
         return ele, ele_test, iter, iter_test
 
+def load_and_save_data(data_dir, data_dir_test, pattern='ds_8*.csv', withlabel=True, ifaverage=False, num_classes=2):
+    #### Get data
+    files_train = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
+    files_test = find_files(data_dir_test, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
+    data_train = []
+    labels_train = np.empty([0])
+    for ind in range(len(files_train)):
+        if ind % 100 == 0:
+            print "train", ind
+        data = read_data(files_train[ind][0], ifaverage=ifaverage)
+        data_train.append(data)
+        labels_train = np.append(labels_train, files_train[ind][1])
+    labels_train =  np.eye((num_classes))[labels_train.astype(int)]   # get one-hot lable
+
+    data_test = []
+    labels_test = np.empty([0])
+    for ind in range(len(files_test)):
+        if ind % 100 == 0:
+            print "test", ind
+        data = read_data(files_test[ind][0], ifaverage=ifaverage)
+        data_test.append(data)
+        labels_test = np.append(labels_test, files_test[ind][1])
+    labels_test =  np.eye((num_classes))[labels_test.astype(int)]   # get one-hot lable
+
+    np.savez("testF751testN1501", x_train=np.array(data_train), y_train=np.array(labels_train), x_test=np.array(data_test), y_test=np.array(labels_test))
+    return np.array(data_train), np.array(labels_train), np.array(data_test), np.array(labels_test)
+
+def load_data(data_dir):
+    ff = np.load(data_dir)
+    return ff["x_train"], ff["y_train"], ff["x_test"], ff["y_test"]
 #def my_input_fn(file_path, perform_shuffle=False, repeat_count=1):
     #def _parse_line(line):
         #### decode the line into variables

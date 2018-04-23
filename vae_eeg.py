@@ -82,6 +82,38 @@ def upsample(inputs, name='depool', factor=[2,2]):
         out = tf.image.resize_bilinear(inputs, size=size, align_corners=None, name=None)
     return out
 
+#def plot_test(original, reconstruction, load_model = False, save_name="save"):
+    ## Here, we plot the reconstructed eeg on test set images.
+    ##if load_model:
+        ##saver.restore(sess, os.path.join(os.getcwd(), logdir + '/' + "{}".format(model_No)))
+    #num_pairs = 6
+    #original = np.reshape(original, (-1, seq_len))
+    #for pair in range(num_pairs):
+        ##reshaping to show original test image
+        #x_image = np.reshape(original[pair, :], (1,seq_len))
+        #index = pair * 2 + 1
+        #ax1 = plt.subplot(num_pairs,2,index)  # arrange in 6*2 layout
+        #plt.imshow(x_image, aspect="auto")
+        #if pair == 0 or pair == 1:
+            #plt.title("Original")
+        ##plt.xlim([0, 27])
+        ##plt.ylim([27, 0])
+
+        #x_reconstruction_image = np.reshape(reconstruction[pair, :], (1,seq_len))
+        #ax2 = plt.subplot(num_pairs, 2, (pair + 1) * 2 , sharex = ax1, sharey=ax1)
+        #plt.imshow(x_reconstruction_image, aspect="auto")
+        #plt.setp(ax2.get_xticklabels(), visible=False)
+        ##plt.xlim([0, 27])
+        ##plt.ylim([27, 0])
+        #plt.tight_layout()
+        #if pair == 0 or pair == 1:
+            #plt.title("Reconstruct")
+            
+    #plt.subplots_adjust(left=0.06, bottom=0.05, right=0.95, top=0.95,
+                #wspace=0.30, hspace=0.22)
+    #plt.savefig(save_name + "samples.png", format="png")
+    #plt.close()
+
 def plot_test(original, reconstruction, load_model = False, save_name="save"):
     # Here, we plot the reconstructed image on test set images.
     #if load_model:
@@ -112,7 +144,7 @@ def plot_test(original, reconstruction, load_model = False, save_name="save"):
                 wspace=0.30, hspace=0.22)
     plt.savefig(save_name + "samples.png", format="png")
     plt.close()
-    
+   
 #### input
 with tf.name_scope("input"):
     ## the real data from database
@@ -138,8 +170,10 @@ deconv3.shape (?, 5120, 8)
 depool.shape (?, 10240, 8)
 reconstruction (?, 10240, 1)
 '''
-def encoder(inputs_enc, num_filters=[25], kernel_size=[5, 5], pool_size=[2, 2], scope=None):
-    """def encoder_net(x, latent_dim, h_dim):
+def encoder(inputs_enc, num_filters=[32, 64, 64, 64], kernel_size=[3, 3], pool_size=[2, 2], scope=None):
+    """parameters from
+    https://www.kaggle.com/rvislaywade/visualizing-mnist-using-a-variational-autoencoder
+    def encoder_net(x, latent_dim, h_dim):
     Construct an inference network parametrizing a Gaussian.
     Args:
     x: A batch of real data (MNIST digits).
@@ -163,7 +197,7 @@ def encoder(inputs_enc, num_filters=[25], kernel_size=[5, 5], pool_size=[2, 2], 
                                                     kernel_size = kernel_size,
                                                     padding='SAME',
                                                     activation=tf.nn.relu)
-                net = tf.layers.max_pooling2d(inputs=net, pool_size=pool_size, padding='SAME', strides=2)
+                #net = tf.layers.max_pooling2d(inputs=net, pool_size=pool_size, padding='SAME', strides=2)
                 print net.shape
                 
         ### dense layer

@@ -44,7 +44,6 @@ def plotSpectrum(data,Fs, color='c', label='x'):
     """
     Plots a Single-Sided Amplitude Spectrum of data(t)
     """
-    Fs = 400
     n = len(data) # length of the signal
     k = np.arange(n)
     T = n/Fs
@@ -59,10 +58,11 @@ def plotSpectrum(data,Fs, color='c', label='x'):
     plt.ylabel('|Y(freq)|')
 
 def plotPowerSpectrum(data, Fs, color='m', label='x'):
-    f, Pxx_den = signal.periodogram(data, Fs)
-    plt.semilogy(f, Pxx_den, color, label=label)
+    f, Pxx_den = signal.welch(x_data1, Fs, window='hanning', nperseg=1024, noverlap=0)
+    #plt.semilogy(f, Pxx_den, color, label=label)
+    plt.plot(f, Pxx_den, color, label=label)
     plt.xlabel('frequency [Hz]')
-    plt.ylabel('PSD [V**2/Hz]')
+    plt.ylabel('PSD')
 
 def plotWaveletSpectrum(data, color='m', label='x'):
     cwtmatr = signal.cwt(data, signal.morlet, np.arange(1, 25))
@@ -95,16 +95,16 @@ def plotOnePair(data11, data12, data21, data22):
     plt.xlim([0, 10240])
 
     fig.add_subplot(gs_base[2])
-    plotPowerSpectrum(data11, 1000, color= 'c', label="non-focal")
-    plotPowerSpectrum(data21, 1000, color= 'blueviolet' , label="focal")
+    plotPowerSpectrum(data11, 512, color= 'c', label="non-focal")
+    plotPowerSpectrum(data21, 512, color= 'blueviolet' , label="focal")
     plt.title("power spectrum")
     plt.legend()
-    plt.xlim([0, 100])
-    plt.ylim([0.01, 10000])
+    plt.xlim([0, 20])
+    #plt.ylim([0.01, 10000])
     
     fig.add_subplot(gs_base[3])
-    plotSpectrum(data12,100, color= 'c', label="non-focal")
-    plotSpectrum(data22,100, color= 'blueviolet' , label="focal")
+    plotSpectrum(data12, 512, color= 'c', label="non-focal")
+    plotSpectrum(data22, 512, color= 'blueviolet' , label="focal")
     plt.title("spectrum")
     plt.legend()
     plt.xlim([0, 100])
@@ -129,7 +129,8 @@ for ind in range(21, 29):
     #wavfile.write("results/audio/" + filename + "fs1000.wav", 1000, x_data)
     #ipdb.set_trace()
     plotOnePair(x_data1, y_data1, x_data2, y_data2)
-    plt.show()
-    #plt.savefig( files[0][0:-4] +"compare_F_NF.png")
-    #plt.close()
+    ipdb.set_trace()
+    #plt.show()
+    plt.savefig(  files[0][0:-4] +"compare_F_NF_linear.png")
+    plt.close()
 

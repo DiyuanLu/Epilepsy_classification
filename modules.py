@@ -2,10 +2,8 @@ import numpy as np
 import tensorflow as tf
 import ipdb
 
-num_classes = 2
 
-
-def dense_net(x):
+def dense_net(x, num_classes = 2):
     '''with dense and dropout
     x: 2d array Batch_size * samples'''
     net = tf.layers.flatten(x)
@@ -18,7 +16,7 @@ def dense_net(x):
 
     return net 
     
-def fc_net(x, hid_dims=[500, 300, 100]):
+def fc_net(x, hid_dims=[500, 300, 100], num_classes = 2):
     net = tf.layers.flatten(x)
     # Convolutional Layer 
     for layer_id, num_outputs in enumerate(hid_dims):   ## avoid the code repetation
@@ -44,7 +42,7 @@ def fc_net(x, hid_dims=[500, 300, 100]):
             return net
            
 
-def resi_net(x, hid_dims=[500, 300]):
+def resi_net(x, hid_dims=[500, 300], num_classes = 2):
     '''tight structure of fully connected and residual connection
     x: [None, seq_len, width]'''
     net = tf.layers.flatten(x)
@@ -82,7 +80,7 @@ def resi_net(x, hid_dims=[500, 300]):
                                                                 scale = True)
         return outputs
         
-def CNN(x, num_filters=[16, 32, 64], seq_len=10240, width=1):
+def CNN(x, num_filters=[16, 32, 64], seq_len=10240, width=1, num_classes = 2):
     '''Perform convolution on 1d data'''
     '''Perform convolution on 1d data'''
     ## Input layer
@@ -111,7 +109,7 @@ def CNN(x, num_filters=[16, 32, 64], seq_len=10240, width=1):
     return logits
 
 
-def DeepConvLSTM(x, num_filters=[64, 64], filter_size=5, num_lstm=128, seq_len=1280, width=2):
+def DeepConvLSTM(x, num_filters=[64, 64], filter_size=5, num_lstm=128, seq_len=1280, width=2, num_classes = 2):
     '''work is inspired by
     https://github.com/sussexwearlab/DeepConvLSTM/blob/master/DeepConvLSTM.ipynb
     in-shape: (BATCH_SIZE, 1, SLIDING_WINDOW_LENGTH, NB_SENSOR_CHANNELS)
@@ -157,7 +155,7 @@ def DeepConvLSTM(x, num_filters=[64, 64], filter_size=5, num_lstm=128, seq_len=1
     return net
 
 
-def RNN(x, num_lstm=128, seq_len=1280, width=2):
+def RNN(x, num_lstm=128, seq_len=1280, width=2, num_classes = 2):
     '''Use RNN
     x: shape[batch_size,time_steps,n_input]'''
     with tf.variable_scope("rnn_lstm") as layer_scope:
@@ -165,7 +163,7 @@ def RNN(x, num_lstm=128, seq_len=1280, width=2):
         #### prepare the shape for rnn: "time_steps" number of [batch_size,n_input] tensors
         net = tf.unstack(net, seq_len, 1)
         ##### defining the network
-        lstm_layer = tf.contrib.rnn.BasicLSTMCell(num_lstm,forget_bias=1)
+        lstm_layer = tf.contrib.rnn.BasicLSTMCell(num_lstm, forget_bias=1)
         outputs, _ =tf.nn.static_rnn(lstm_layer, net, dtype="float32")
 
         out_weights=tf.Variable(tf.random_normal([num_lstm,num_classes]))
@@ -175,29 +173,38 @@ def RNN(x, num_lstm=128, seq_len=1280, width=2):
         tf.summary.histogram('activation', net)
     return net
 
-def Dilated_CNN(x, num_filters=[16, 32, 64], dilation_rate=[1, 2, 4], seq_len=10240):
+def Dilated_CNN(x, num_filters=[8, 32, 128], dilation_rate=[2, 8, 16], kernel_size = [5, 1], pool_size=[2, 1], pool_strides=[2, 2], seq_len=10240, width=1, num_classes = 2):
     '''Perform convolution on 1d data
     x: shape [batch_size, height, width, channels]
     '''
     ## Input layer
-    seq_len = seq_len
-    inputs = tf.reshape(x,  [-1, seq_len, width])
-    net = inputs        
-    # Convolutional Layer 
+    inputs = tf.reshape(x,  [-1, seq_len, width, 1])
+    net = inputs
+    
+    # dialted Convolutional Layer
+    out_conv = []
     for layer_id, num_outputs in enumerate(num_filters):   ## avoid the code repetation
         with tf.variable_scope('block_{}'.format(layer_id)) as layer_scope:
             #### dilated layers
-            net = tf.nn.atrous_conv2d(   
-                                                net,
-                                                [1, 5, 1, num_outputs],     # [filter_height, filter_width, inum_channels, out_channels]
-                                                'SAME',
-                                                activation=tf.nn.relu)
-            net = tf.layers.max_pooling2d(inputs=net, pool_size=[2, 1], strides=[2, 1])
+            net = tf.layers.conv2d(
+                                                         inputs = net,
+                                                         filters = num_outputs,   ##[filter_height, filter_width, in_channels, out_channels]
+                                                         kernel_size = kernel_size,
+                                                         dilation_rate = (dilation_rate[layer_id], 1),
+                                                         padding = 'same',
+                                                         activation = tf.nn.relu)
+            print net.shape
+            net = tf.layers.max_pooling2d(inputs=net, pool_size=pool_size, strides=pool_strides)
+            net = tf.layers.dropout(net, rate=0.5)
+            
+            dilat_net = tf.reshape(net, [-1,  net.shape[1]*net.shape[2]*net.shape[3]])
+            #dilat_net  = tf.layers.dense(inputs=dilat_net , units=512, activation=tf.nn.relu)
+            #dilat_net = tf.layers.dropout(inputs=dilat_net , rate=0.75)
+            out_conv.append(dilat_net )
+    #ipdb.set_trace()
+    net = tf.concat(out_conv, axis=-1)     ## stack all the dilated conv output as features
+    print net.shape
     ### Logits layer
-    net = tf.reshape(net, [-1,  net.shape[1]*net.shape[2]*net.shape[3]])
-    net = tf.layers.dense(inputs=net, units=1024, activation=tf.nn.relu)
-    net = tf.layers.dropout(inputs=net, rate=0.75)
-
     logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
 
     return logits

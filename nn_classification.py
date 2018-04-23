@@ -11,7 +11,7 @@ import functions as func
 import modules as mod
 import ipdb
 import time
-
+from tensorflow.python.client import timeline
 
 data_dir = "data/train_data"
 data_dir_test = "data/test_data"
@@ -30,15 +30,12 @@ batch_size = 20 # old: 16     20has a very good result
 num_classes = 2
 epochs = 200
 total_batches =  epochs * 3000 // batch_size + 1 #5001               #
-
+num_classes = 2
 pattern='ds_8*.csv'
-version = 'whole_{}_resi'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
-results_dir= "results/" + version + '/batch_norm_batch{}/' .format(batch_size)+ datetime
+version = 'whole_{}_RNN'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTMDilatedCNN
+results_dir= "results/" + version + '/cpu-batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
-if not os.path.exists(logdir):
-    os.makedirs(logdir)
-if not os.path.exists(results_dir):
-    os.makedirs(results_dir)
+
 print results_dir
 
 
@@ -64,12 +61,13 @@ def train(x):
         ele_test = iter_test.get_next()   #you get the filename
 
     #### Constructing the network
-    #outputs = mod.fc_net(x, hid_dims=[500, 300])   ## 
-    outputs = mod.resi_net(x, hid_dims=[500, 300])  ## ok very sfast
-    #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width)    ## ok
-    #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64, 64], filter_size=5, num_lstm=128, seq_len=height, width=width)  ## ok
-    #outputs = mod.RNN(x, num_lstm=128, seq_len=height, width=width)   ##ok
-    
+    #outputs = mod.fc_net(x, hid_dims=[500, 300], num_classes = num_classes)   ##
+    #outputs = mod.resi_net(x, hid_dims=[500, 300], num_classes = num_classes)  ## ok very sfast
+    #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width, num_classes = num_classes)    ## ok
+    #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64], filter_size=5, num_lstm=128, seq_len=height, width=width, num_classes = num_classes)  ## ok
+    outputs = mod.RNN(x, num_lstm=32, seq_len=height, width=width, num_classes = num_classes)   ##ok
+    #outputs = mod.Dilated_CNN(x, num_filters=[8, 16, 32], seq_len=seq_len, width=width, num_classes = num_classes)
+
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
@@ -84,13 +82,11 @@ def train(x):
         test_acc = tf.Variable(0.0)
         tf.summary.scalar('loss', cost)
         tf.summary.scalar('accuracy', accuracy)
-        #sensitivity_sum = tf.summary.scalar('sensitivity', sensitivity)
-        #specificity_sum = tf.summary.scalar('specificity', specificity)
         test_acc_sum = tf.summary.scalar('test_accuracy', test_acc)
 
-    optimizer = tf.train.AdamOptimizer(0.001).minimize(cost)
+    optimizer = tf.train.AdamOptimizer(0.001).minimize(cost)###, aggregation_method=tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N
     #optimizer = tf.train.GradientDescentOptimizer(0.001).minimize(cost)
-    
+
     #################### Set up logging for TensorBoard.
     writer = tf.summary.FileWriter(logdir)
     writer.add_graph(tf.get_default_graph())
@@ -98,8 +94,12 @@ def train(x):
     summaries = tf.summary.merge_all()
     saver = tf.train.Saver(max_to_keep= 20)
 
-    trials = 1
     with tf.Session() as sess:
+        
+        #### Profiling
+        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        
         outliers = []
         np.random.seed(1998745)
         sess.run(iter.initializer)   # every trial restart training
@@ -112,7 +112,11 @@ def train(x):
         #sen_total_train = np.array([])   # sensitivity
         #spe_total_train = np.array([])    # specificity
         # track the outlier files
-        for batch in range(total_batches):
+        if not os.path.exists(logdir):
+            os.makedirs(logdir)
+        if not os.path.exists(results_dir):
+            os.makedirs(results_dir)
+        for batch in range(2):#####3total_batches
             save_name = results_dir + '/' + "_step{}_".format( batch)
             filename =  sess.run(ele)   # (name, '1'/'0')
             filename_test =  sess.run(ele_test)   # (name, '1'/'0')
@@ -126,9 +130,18 @@ def train(x):
             batch_labels =  np.eye((num_classes))[batch_labels.astype(int)]   # get one-hot lable
             #batch_data = np.expand_dims(batch_data, axis=2)  # from shape [None, seq_len, 2] to [None, 1, seq_len, 2]
             ##ipdb.set_trace()
-            _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels})
-
+            
+            _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels}, options=options, run_metadata=run_metadata)
+            # We collect profiling infos for each step.
             writer.add_summary(summary, batch)
+            
+            ####### # Create the Timeline object, and write it to a json file
+            fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+            chrome_trace = fetched_timeline.generate_chrome_trace_format()
+            with open(save_name + 'timeline_{}.json'.format(batch), 'w') as f:
+                f.write(chrome_trace)
+
+
             ### record loss and accuracy
             #if acc < 0.35:
                 #outliers.append(filename)
@@ -148,7 +161,7 @@ def train(x):
                     test_labels = np.append(test_labels, filename_test[ind][1])
                 test_labels =  np.eye((num_classes))[test_labels.astype(int)]   # get one-hot lable
 
-                test_temp = sess.run(accuracy, {x: test_data, y: test_labels})   # test_acc_sum, sensitivity_sum, specificity_sum, 
+                test_temp = sess.run(accuracy, {x: test_data, y: test_labels})   # test_acc_sum, sensitivity_sum, specificity_sum,
                 acc_total_test = np.append(acc_total_test, test_temp)
                 ########################################################
             if batch % 10 == 0:
@@ -159,7 +172,7 @@ def train(x):
             if batch % plot_every == 0 and batch >= plot_every:   #
 
                 func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], xlabel= 'training batches / {}'.format(batch_size), ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_batch_{}".format(batch))
-                
+
                 func.plot_smooth_shadow_curve([loss_total_train], colors=['c'], xlabel= 'training batches / {}'.format(batch_size), ylabel="loss", title='Loss in training',labels=['training loss'], save_name=results_dir+ "/training_loss_batch_{}".format(batch))
 
                 func.save_data((acc_total_train, loss_total_train, acc_total_test), header='accuracy_train,loss_train,accuracy_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO

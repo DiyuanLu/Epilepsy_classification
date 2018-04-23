@@ -11,6 +11,7 @@ import functions as func
 import modules as mod
 import ipdb
 import time
+from tensorflow.python.client import timeline
 from tensorflow.examples.tutorials.mnist import input_data    # DOWNLOAD DATA
 
 mnist = input_data.read_data_sets("data/MNIST_data/",  one_hot=True)
@@ -20,12 +21,12 @@ plot_every = 500
 save_every = 500
 height, width = 28, 28 #seq_len, 1     # MNIST
 batch_size = 100 # old: 16     20has a very good result
-num_classes = 2
+num_classes = 10
 epochs = 200
 total_batches =  epochs * 3000 // batch_size + 1 #5001               #
 
 pattern='ds_8*.csv'
-version = 'whole_MNIST_RNN'              #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
+version = 'whole_MNIST_RNN'              #DilatedCNNDeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
 results_dir= "results/2-MNIST_checks/" + version + '/batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
 if not os.path.exists(logdir):
@@ -42,12 +43,12 @@ y = tf.placeholder("float32")
 def train(x):
 
     #### Constructing the network
-    #outputs = mod.fc_net(x, hid_dims=[500, 300])   ## 
-    #outputs = mod.resi_net(x, hid_dims=[500, 300])  ## ok very sfast
-    #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width)    ## ok
-    #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64, 64], filter_size=5, num_lstm=128, seq_len=height, width=width)  ## ok
-    outputs = mod.RNN(x, num_lstm=256, seq_len=height, width=width)   ##ok
-    
+    #outputs = mod.fc_net(x, hid_dims=[500, 300], num_classes = num_classes)   ##
+    #outputs = mod.resi_net(x, hid_dims=[500, 300], num_classes = num_classes)  ## ok very sfast
+    #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width, num_classes = num_classes)    ## ok
+    #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64], filter_size=5, num_lstm=128, seq_len=height, width=width, num_classes = num_classes)  ## ok
+    outputs = mod.RNN(x, num_lstm=64, seq_len=height, width=width, num_classes = num_classes)   ##ok
+    #outputs = mod.Dilated_CNN(x, num_filters=[8, 16, 32], seq_len=height, width=width, num_classes = num_classes)  ##ok
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
@@ -61,7 +62,7 @@ def train(x):
         tf.summary.scalar('accuracy', accuracy)
         test_acc_sum = tf.summary.scalar('test_accuracy', test_acc)
 
-    optimizer = tf.train.AdamOptimizer(0.001).minimize(cost)
+    optimizer = tf.train.AdamOptimizer(0.001).minimize(cost, aggregation_method=tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
     #optimizer = tf.train.GradientDescentOptimizer(0.001).minimize(cost)
     
     #################### Set up logging for TensorBoard.
@@ -72,22 +73,31 @@ def train(x):
     saver = tf.train.Saver(max_to_keep= 20)
 
     with tf.Session() as sess:
+         #profiler = tf.profiler.Profiler(sess.graph)
+        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
+        run_metadata = tf.RunMetadata()
+        
         np.random.seed(1998745)
         sess.run(tf.global_variables_initializer())
         acc_total_train = np.array([])
         acc_total_test = np.array([])
         loss_total_train = np.array([])
-        for batch in range(total_batches):
+        for batch in range(5):###total_batches
             save_name = results_dir + '/' + "_step{}_".format( batch)
             ########## MNIST
             batch_data, batch_labels = mnist.train.next_batch(batch_size)
 
-            _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels})
+            _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels}, options=options, run_metadata=run_metadata)
            
             if batch % 10 == 0:
                 print "batch",batch, 'loss', c, 'accuracy', acc
             writer.add_summary(summary, batch)
-            
+            ####### # Create the Timeline object, and write it to a json file
+            fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+            chrome_trace = fetched_timeline.generate_chrome_trace_format()
+            with open(save_name + 'timeline_{}.json'.format(batch), 'w') as f:
+                f.write(chrome_trace)
+                
             if batch % 1 == 0:
                 # track training
                 acc_total_train = np.append(acc_total_train, acc)
