@@ -12,15 +12,19 @@ import ipdb
 from tensorflow.python import debug as tfdb          ## for debuging
 from keras.models import model_from_json
 import functions as func
+import random
+import pickle
 
-def sampling(args):
+
+def sampling(args, batch_size):
     '''# a keras lambda layer computes arbitrary function on the output of a layer
 # so z is effectively combining mean and variance layers through sampling func 
 '''
-    _mean,_log_var = args
+    _mean, _log_var, _batch_size = args
     epsilon = K.random_normal(shape = (batch_size, latent_dim), mean = 0., stddev = epsilon_std)
     return _mean+K.exp(_log_var/2)*epsilon
 
+random.seed(1998)
 
 batch_size =  15            # train: 5955    test:  1485 samples
 ifaverage = True                    ###False   ###
@@ -33,7 +37,7 @@ seq_shape = (original_dim, channel)
 intermediate_dim = 256
 latent_dim = 2
 
-nb_epochs = 30
+nb_epochs = 2
 epsilon_std = 1.0
 data_dir = "data/npy_data/testF751testN1501_aver_zscore.npz"
 
@@ -87,12 +91,13 @@ x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
 
 
 # x_train is required for input and loss output as target
-vae.fit(x_train, x_train, shuffle = True, epochs = nb_epochs, batch_size = batch_size, validation_data = (x_test, x_test))
+history = vae.fit(x_train, x_train, shuffle = True, epochs = nb_epochs, batch_size = batch_size, validation_data = (x_test, x_test))
 
+with open(results_dir + '/trainHIstoryDIct', 'wb') as filepi:
+    pickle.dump(history.history, filepi)
 ############### encoder is the inference network
 encoder = Model(X, z_mean)
 x_test_encoded = encoder.predict(x_test, batch_size = batch_size)
-x_decoded = generator.predict(z_sample)
 plt.figure(figsize = (6,6))
 plt.scatter(x_test_encoded[:,0], x_test_encoded[:,1], c = np.argmax(y_test, axis=1))
 plt.colorbar()
@@ -107,23 +112,26 @@ _x_decoded = X_bar(_h_decoded)
 generator =  Model(z_input, _x_decoded)
 
 #####plot sample reconstruction
-z_sample = np.array([np.random.normal(0, 1, latent_dim)])
-print z_sample
+num_sample = 10
+z_sample = np.array([np.random.normal(0, 1, (num_sample, latent_dim))])
+print "z_sample.shape", z_sample.shape
 x_decoded = generator.predict(z_sample)      ### start from random
-x_test_recon = generator.predict(x_test_encoded[0:5, :])      # use the encoding from test reconstruct
+x_test_recon = generator.predict(x_test_encoded[0:num_sample, :])      # use the encoding from test reconstruct
 sampled_im = x_decoded[0].reshape(original_dim, channel )
 plt.figure()
-plt.plot(sampled_im, 'c', label='rand_latent_recon')
-plt.legend()
+for ii in range(num_sample):
+    ax1 = plt.subplot(5, 2, ii +1)  
+    plt.plot(sampled_im)
 plt.savefig(results_dir + '/sampled_reconstructon.png', format='png')
 plt.close()
 
-ipdb.set_trace()
+
 plt.figure()
-for ii in range(5)
-    ax1 = plt.subplot(5,1, ii +1)  
-    plt.plot(x_test_recon[ii:], label='test_recon_{}'.format(ii))
-    plt.plot(x_test[ii:], label='test_original'.format(ii))
+for ii in range(5):
+    ax1 = plt.subplot(5,2, ii *2 +1)  
+    plt.plot(x_test_recon[ii, :], label='test_recon_{}'.format(ii))
+    ax2 = plt.subplot(5,2, (ii+1) *2 )  
+    plt.plot(x_test[ii, :], label='test_original_{}'.format(ii))
 plt.legend()
 plt.savefig(results_dir + '/test_reconstructons.png', format='png')
 plt.close()
@@ -132,30 +140,20 @@ plt.close()
 # 2d manifold of images by exploring quantiles of normal dist (using the inverse of cdf)
 n = 3
 figure  =  plt.subplot()
-grid_x = norm.ppf(np.linspace(0.05,0.95,n))
-grid_y = norm.ppf(np.linspace(0.05,0.95,n))
+grid_x = norm.ppf(np.linspace(0.05, 0.95, n))
+grid_y = norm.ppf(np.linspace(0.05, 0.95, n))
 #latent = np.random.normal(0, 1, latent_dim)
-gs = plt.GridSpec(n, n, hspace=0)
-fig = plt.figure()
-other_axes = [fig.add_subplot(gs_top[i,:], sharex=ax) for i in range(1: )]
-other_axes[0].plot(data12, 'c', label="non-focal")
-
-
-for i, yi in enumerate(grid_x):
-    for j,xi in enumerate(grid_y):
+f, axarr = plt.subplots(n, n, sharex='col', sharey='row')
+for ii, yi in enumerate(grid_x):
+    for jj,xi in enumerate(grid_y):
         latent =  np.array([[xi, yi]]) 
-        x_decoded = generator.predict(z_sample)
-        if i == 0 and j == 0:
-            ax = fig.add_subplot(gs[0, :])
-            ax.plot(x_decoded)
-            plt.setp(ax.get_xticklabels(), visible=False)
-        else:
-            other_axes[i + j].plot(x_decoded)
-            
-        
-plt.figure(figsize = (10,10))
-plt.imshow(figure, cmap = 'Greys_r')
-plt.show()
+        x_decoded = generator.predict(latent)
+        axarr[ii, jj].plot(x_decoded)
+# Fine-tune figure; hide x ticks for top plots and y ticks for right plots
+plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
+plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
+plt.savefig(results_dir + '/prior_3*3.png', format='png')
+plt.close()
 ipdb.set_trace()
 
 # serialize model to JSON
@@ -191,3 +189,64 @@ Epoch 15/20
 Epoch 20/20
 5955/5955 [==============================] - 5s 918us/step - loss: 6.1745 - val_loss: 145969.5441
 '''
+'''
+Epoch 1/30
+5955/5955 [==============================] - 4s 728us/step - loss: 71.0389 - val_loss: 2.5578
+Epoch 2/30
+5955/5955 [==============================] - 4s 710us/step - loss: 2.7994 - val_loss: 3.1707
+Epoch 3/30
+5955/5955 [==============================] - 4s 709us/step - loss: 3.3851 - val_loss: 2.4326
+Epoch 4/30
+5955/5955 [==============================] - 4s 708us/step - loss: 1.8853 - val_loss: 1.6675
+Epoch 5/30
+5955/5955 [==============================] - 4s 709us/step - loss: 2.8640 - val_loss: 7.3529
+Epoch 6/30
+5955/5955 [==============================] - 4s 703us/step - loss: 3.0463 - val_loss: 4.9961
+Epoch 7/30
+5955/5955 [==============================] - 4s 710us/step - loss: 2.3872 - val_loss: 11.0147
+Epoch 8/30
+5955/5955 [==============================] - 4s 707us/step - loss: 1.8604 - val_loss: 10.1437
+Epoch 9/30
+5955/5955 [==============================] - 4s 710us/step - loss: 1.3925 - val_loss: 2.7661
+Epoch 10/30
+5955/5955 [==============================] - 4s 707us/step - loss: 0.9390 - val_loss: 1.0866
+Epoch 11/30
+5955/5955 [==============================] - 4s 707us/step - loss: 0.6431 - val_loss: 3.0361
+Epoch 12/30
+5955/5955 [==============================] - 4s 706us/step - loss: 0.6310 - val_loss: 0.7139
+Epoch 13/30
+5955/5955 [==============================] - 4s 707us/step - loss: 0.6697 - val_loss: 0.6138
+Epoch 14/30
+5955/5955 [==============================] - 4s 706us/step - loss: 0.4382 - val_loss: 0.4046
+Epoch 15/30
+5955/5955 [==============================] - 4s 705us/step - loss: 0.2560 - val_loss: 0.3298
+Epoch 16/30
+5955/5955 [==============================] - 4s 705us/step - loss: 0.1998 - val_loss: 0.2658
+Epoch 17/30
+5955/5955 [==============================] - 4s 705us/step - loss: 0.1383 - val_loss: 0.3698
+Epoch 18/30
+5955/5955 [==============================] - 4s 707us/step - loss: 0.2023 - val_loss: 0.2424
+Epoch 19/30
+5955/5955 [==============================] - 4s 707us/step - loss: 0.1138 - val_loss: 0.2144
+Epoch 20/30
+5955/5955 [==============================] - 4s 712us/step - loss: 0.1022 - val_loss: 0.1841
+Epoch 21/30
+5955/5955 [==============================] - 4s 717us/step - loss: 0.3222 - val_loss: 0.9091
+Epoch 22/30
+5955/5955 [==============================] - 4s 701us/step - loss: 0.9123 - val_loss: 0.5235
+Epoch 23/30
+5955/5955 [==============================] - 4s 707us/step - loss: 0.4928 - val_loss: 0.3340
+Epoch 24/30
+5955/5955 [==============================] - 4s 710us/step - loss: 0.3067 - val_loss: 0.2752
+Epoch 25/30
+5955/5955 [==============================] - 4s 709us/step - loss: 0.1244 - val_loss: 0.2840
+Epoch 26/30
+5955/5955 [==============================] - 4s 706us/step - loss: 0.1429 - val_loss: 0.1247
+Epoch 27/30
+5955/5955 [==============================] - 4s 701us/step - loss: 0.1024 - val_loss: 0.1755
+Epoch 28/30
+5955/5955 [==============================] - 4s 708us/step - loss: 0.1127 - val_loss: 0.3379
+Epoch 29/30
+5955/5955 [==============================] - 4s 708us/step - loss: 0.1753 - val_loss: 0.7317
+Epoch 30/30
+5955/5955 [==============================] - 4s 708us/step - loss: 0.2242 - val_loss: 0.0922'''

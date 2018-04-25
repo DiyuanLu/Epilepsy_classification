@@ -36,6 +36,7 @@ if not os.path.exists(logdir):
     os.makedirs(logdir)
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
+print results_dir
 ######## Encoder
 X=Input(batch_shape=(batch_size,original_dim))
 h=Dense(intermediate_dim, activation='relu')(X)
@@ -82,14 +83,14 @@ x_test_encoded=encoder.predict(x_test, batch_size=batch_size)
 plt.figure(figsize=(6,6))
 plt.scatter(x_test_encoded[:,0], x_test_encoded[:,1], c=y_test)
 plt.colorbar()
-
+plt.savefig(results_dir + '/latent_vector_scatter.png', format='png')
+ptl.close()
 
 # since the generator treats z as an input, we make z an input layer
 z_input=Input(shape=(latent_dim,))
 _h_decoded=h_decoder(z_input)
 _x_decoded=X_bar(_h_decoded)
 generator= Model(z_input, _x_decoded)
-
 #####plot sample reconstruction
 z_sample=np.array([np.random.normal(0, 1, latent_dim)])
 print z_sample
@@ -97,7 +98,8 @@ x_decoded=generator.predict(z_sample)
 sampled_im=x_decoded[0].reshape(digit_size,digit_size)
 plt.figure()
 plt.imshow(sampled_im, cmap='Greys_r')
-
+plt.savefig(results_dir + '/sampled_recon.png', format='png')
+ptl.close()
 
 #####plot prior
 # 2d manifold of images by exploring quantiles of normal dist (using the inverse of cdf)
@@ -117,7 +119,8 @@ for i, yi in enumerate(grid_x):
         
 plt.figure(figsize=(10,10))
 plt.imshow(figure, cmap='Greys_r')
-plt.show()
+plt.savefig(results_dir + '/prior.png', format='png')
+ptl.close()
 ipdb.set_trace()
 
 # serialize model to JSON
@@ -125,7 +128,7 @@ model_json = vae.to_json()
 with open(logdir + "/model.json", "w") as json_file:
     json_file.write(model_json)
 # serialize weights to HDF5
-vae.save_weights("model.h5")
+vae.save_weights(logdir + "/model.h5")
 print("Saved model to disk")
  
 # later...
@@ -134,14 +137,16 @@ print("Saved model to disk")
 json_file = open(logdir+'/model.json', 'r')
 loaded_model_json = json_file.read()
 json_file.close()
-loaded_model = model_from_json(loaded_model_json)
+loaded_model = model_from_json(loaded_model_json, {'batch_size': batch_si
+ze, 'latent_dim': latent_dim, 'epsilon_std':epsilon_std})  ## have to give the hyperparams
+
 # load weights into new model
 loaded_model.load_weights(logdir+"/model.h5")
 print("Loaded model from disk")
  
 ## evaluate loaded model on test data
 loaded_model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
-score = loaded_model.evaluate(X, Y, verbose=0)
+score = loaded_model.evaluate(x_test, x_test, batch_size=batch_size)
 print("%s: %.2f%%" % (loaded_model.metrics_names[1], score[1]*100))
 '''
 Epoch 1/50
