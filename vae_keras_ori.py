@@ -27,7 +27,7 @@ original_dim=784
 intermediate_dim=256
 latent_dim=2
 
-nb_epochs=2
+nb_epochs=50
 epsilon_std=1.0
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 results_dir= "results/vae-keras-ori/".format(batch_size)+ datetime
@@ -84,7 +84,7 @@ plt.figure(figsize=(6,6))
 plt.scatter(x_test_encoded[:,0], x_test_encoded[:,1], c=y_test)
 plt.colorbar()
 plt.savefig(results_dir + '/latent_vector_scatter.png', format='png')
-ptl.close()
+plt.close()
 
 # since the generator treats z as an input, we make z an input layer
 z_input=Input(shape=(latent_dim,))
@@ -92,36 +92,39 @@ _h_decoded=h_decoder(z_input)
 _x_decoded=X_bar(_h_decoded)
 generator= Model(z_input, _x_decoded)
 #####plot sample reconstruction
-z_sample=np.array([np.random.normal(0, 1, latent_dim)])
-print z_sample
-x_decoded=generator.predict(z_sample)
-sampled_im=x_decoded[0].reshape(digit_size,digit_size)
+num_sample = 25
+z_sample = np.random.normal(0, 1, (num_sample, latent_dim))
+print "z_sample.shape", z_sample.shape
+x_decoded = generator.predict(z_sample)      ### start from random
+x_test_recon = generator.predict(x_test_encoded[0:num_sample, :])      # use the encoding from test reconstruct
+sampled_im = x_decoded.reshape(-1, digit_size, digit_size)
 plt.figure()
-plt.imshow(sampled_im, cmap='Greys_r')
-plt.savefig(results_dir + '/sampled_recon.png', format='png')
-ptl.close()
+for ii in range(num_sample):
+    ax1 = plt.subplot(5, 5, ii +1)  
+    plt.imshow(sampled_im[ii, :, :])
+    plt.setp(ax1.get_xticklabels(), visible=False)
+    plt.setp(ax1.get_yticklabels(), visible=False)
+plt.savefig(results_dir + '/sampled_reconstructon.png', format='png')
+plt.close()
 
 #####plot prior
 # 2d manifold of images by exploring quantiles of normal dist (using the inverse of cdf)
 n=15
 figure = np.zeros((digit_size*n, digit_size*n))
-
 grid_x = norm.ppf(np.linspace(0.05,0.95,n))
 grid_y = norm.ppf(np.linspace(0.05,0.95,n))
 #latent = np.random.normal(0, 1, latent_dim)
 for i, yi in enumerate(grid_x):
     for j,xi in enumerate(grid_y):
         latent= np.array([[xi, yi]]) 
-        x_decoded=generator.predict(z_sample)
+        x_decoded=generator.predict(latent)
         digit=x_decoded[0].reshape(digit_size,digit_size)
-        figure[i*digit_size:(i+1)*digit_size, 
-              j*digit_size:(j+1)*digit_size]=digit
+        figure[i*digit_size:(i+1)*digit_size, j*digit_size:(j+1)*digit_size]=digit
         
 plt.figure(figsize=(10,10))
 plt.imshow(figure, cmap='Greys_r')
 plt.savefig(results_dir + '/prior.png', format='png')
-ptl.close()
-ipdb.set_trace()
+plt.close()
 
 # serialize model to JSON
 model_json = vae.to_json()
@@ -137,8 +140,7 @@ print("Saved model to disk")
 json_file = open(logdir+'/model.json', 'r')
 loaded_model_json = json_file.read()
 json_file.close()
-loaded_model = model_from_json(loaded_model_json, {'batch_size': batch_si
-ze, 'latent_dim': latent_dim, 'epsilon_std':epsilon_std})  ## have to give the hyperparams
+loaded_model = model_from_json(loaded_model_json, {'batch_size': batch_size, 'latent_dim': latent_dim, 'epsilon_std':epsilon_std})  ## have to give the hyperparams
 
 # load weights into new model
 loaded_model.load_weights(logdir+"/model.h5")
@@ -148,6 +150,7 @@ print("Loaded model from disk")
 loaded_model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
 score = loaded_model.evaluate(x_test, x_test, batch_size=batch_size)
 print("%s: %.2f%%" % (loaded_model.metrics_names[1], score[1]*100))
+
 '''
 Epoch 1/50
 60000/60000 [==============================] - 8s 130us/step - loss: 201.0283 - val_loss: 174.7658

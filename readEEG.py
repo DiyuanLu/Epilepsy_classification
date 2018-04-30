@@ -11,7 +11,7 @@ from scipy.io import wavfile
 import ipdb
 import os
 import functions as func
-
+import pyeeg
 def autocorrelation(x) :
     """
     Compute the autocorrelation of the signal, based on the properties of the
@@ -115,22 +115,54 @@ def plotOnePair(data11, data12, data21, data22):
 def plotAllPairs(files):
     X_DATA, Y_DATA = np.array([])
 
+def get_features(data, fs=512):
+    features = []
+    pfd = pyeeg.pfd(data)
+    hfd = pyeeg.hfd(data)
+    hjorth = pyeeg.hjorth(data)
+    specentro = pyeeg.spectral_entropy(data)
+    svdentro = pyeeg.svd_entropy(data)
+    fisher = pyeeg.fisher_info(data)
+    apen= pyeeg.ap_entropy(data)
+    dfa= pyeeg.dfa(data)
+    hurst= pyeeg.hurst(data)
+
+    return
 ##data_dir = "data/test_files/one"
 ##files = func.find_files(data_dir, withlabel=False)
-for ind in range(21, 29):
-    files = ['data/test_files/Data_N_Ind30{}.csv'.format(np.str(ind)), 'data/test_files/Data_F_Ind30{}.csv'.format(np.str(ind))]
-    #for filename in files:
-        #print filename
-    x_data1, y_data1 = read_data(files[0])
-    x_data2, y_data2 = read_data(files[1])
-    #fft, correlation = autocorrelation(x_data)
-
-    #sd.play(x_data, 1000)
-    #wavfile.write("results/audio/" + filename + "fs1000.wav", 1000, x_data)
+for ind in range(21, 22):
+    files = 'results/whole_ds_8_DilatedCNN/cpu-batch20/2018-04-27T11-42-06/DilatedCNN_loss.csv'
+    ##for filename in files:
+        ##print filename
+    #x_data1, y_data1 = read_data(files[0])
+    #x_data2, y_data2 = read_data(files[1])
+    ##fft, correlation = autocorrelation(x_data)
+    
+    ##sd.play(x_data, 1000)
+    ##wavfile.write("results/audio/" + filename + "fs1000.wav", 1000, x_data)
     #ipdb.set_trace()
-    plotOnePair(x_data1, y_data1, x_data2, y_data2)
-    ipdb.set_trace()
-    #plt.show()
-    plt.savefig(  files[0][0:-4] +"compare_F_NF_linear.png")
-    plt.close()
+    #plotOnePair(x_data1, y_data1, x_data2, y_data2)
+    #ipdb.set_trace()
+    ##plt.show()
+    #plt.savefig(  files[0][0:-4] +"compare_F_NF_linear.png")
+    #plt.close()
+    reader = csv.reader(codecs.open(files, 'rb', 'utf-8'))
+    batchNo, train_loss, train_acc, test_acc = np.array([]), np.array([]), np.array([]), np.array([])
+    for ind, row in enumerate(reader):
+        ipdb.set_trace()
+        No, loss, tracc, teacc = np.array(row).astype(np.float)
+        batchNo = np.append(batchNo, No)
+        train_loss = np.append(train_loss, loss)
+        train_acc = np.append(train_acc, tracc)
+        test_acc = np.append(test_acc, teacc)
+    batchNo, train_loss, train_acc, test_acc = batchNo.astype(np.int), train_loss.astype(np.float32), train_acc.astype(np.float32), test_acc.astype(np.float32)
+    plt.figure()
+    plt.plot(batchNo, train_loss, 'royalblue', label='train_loss')
+    plt.xlabel("training batches / 20")
+    plt.figure()
+    plt.plot(batchNo,  train_acc, 'royalblue', label='train_acc')
+    plt.plot(batchNo,  test_acc, 'royalblue', label='test_acc')
+    plt.xlabel("training batches / 20")
+    plt.legend()
+    plt.show()
 

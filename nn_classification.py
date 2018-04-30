@@ -13,11 +13,13 @@ import ipdb
 import time
 from tensorflow.python.client import timeline
 
-data_dir = "data/train_data"
-data_dir_test = "data/test_data"
+#data_dir = "data/train_data"
+data_dir = "data/test_files/test_tf"
+#data_dir_test = "data/test_data"
+data_dir_test = "data/test_files/test_tf"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 200
-save_every = 500
+save_every = 100
 seq_len = 1280   ##10240  #
 height = seq_len
 ifaverage = False
@@ -32,7 +34,7 @@ epochs = 200
 total_batches =  epochs * 3000 // batch_size + 1 #5001               #
 num_classes = 2
 pattern='ds_8*.csv'
-version = 'whole_{}_RNN'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTMDilatedCNN
+version = 'whole_{}_DilatedCNN'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTMDilatedCNN
 results_dir= "results/" + version + '/cpu-batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
 
@@ -44,29 +46,37 @@ y = tf.placeholder("float32")
 
 ### construct the network
 def train(x):
-    #ele, ele_test, iter, iter_test = func.get_Data(data_dir, data_dir_test, batch_size=batch_size, pattern=pattern, withlabel=True)
-    #ipdb.set_trace()
+    #ele, ele_test, iter, iter_test = func.load_train_test_data(data_dir, data_dir_test, batch_size=2, pattern=pattern, withlabel=True)
+    #data_train, labels_train, data_test, labels_test = func.load_train_test_data_queue(data_dir, data_dir_test,  batch_size=20, pattern='Data*.csv', withlabel=True)
+    
     with tf.name_scope("Data"):
         #### Get data
-        files_train = func.find_files(data_dir, pattern=pattern, withlabel=True )### traverse all the files in the dir, and divide into batches, from
-        files_test = func.find_files(data_dir_test, pattern=pattern, withlabel=True )### traverse all the files in the dir, and divide into batches, from
-        file_tensor_train = tf.convert_to_tensor(files_train, dtype=tf.string)## convert to tensor
-        file_tensor_test = tf.convert_to_tensor(files_test, dtype=tf.string)## convert to tensor
-        dataset = tf.data.Dataset.from_tensor_slices(file_tensor_train).repeat().batch(batch_size).shuffle(buffer_size=10000)
-        dataset_test = tf.data.Dataset.from_tensor_slices(file_tensor_test).repeat().batch(batch_size).shuffle(buffer_size=10000)
-        ## create the iterator
-        iter = dataset.make_initializable_iterator()
+        files_wlabel_train = func.find_files(data_dir, pattern=pattern, withlabel=True )### traverse all the files in the dir, and divide into batches, from
+        files_wlabel_test = func.find_files(data_dir_test, pattern=pattern, withlabel=True )### traverse all the files in the dir, and divide into batches, from
+        #files_train, labels_train = np.array(files_wlabel_train)[:, 0], np.array(np.array(files_wlabel_train)[:, 1]).astype(np.int)
+        #files_test, labels_test = np.array(files_wlabel_test)[:, 0], np.array(files_wlabel_test)[:, 1].astype(np.int)   ## seperate the name and label
+        dataset_train = tf.data.Dataset.from_tensor_slices(files_wlabel_train).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        dataset_test = tf.data.Dataset.from_tensor_slices(files_wlabel_test).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        ## create TensorFlow Dataset objects
+        #dataset_train = tf.data.Dataset.from_tensor_slices((files_train, labels_train)).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        #dataset_test = tf.data.Dataset.from_tensor_slices((files_test, labels_test)).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        #### map self-defined functions to the dataset
+        
+        #dataset_train = dataset_train.map(func.input_parser)
+        #dataset_test = dataset_test.map(func.input_parser)
+       
+        iter = dataset_train.make_initializable_iterator()
         iter_test = dataset_test.make_initializable_iterator()
         ele = iter.get_next()   #you get the filename
         ele_test = iter_test.get_next()   #you get the filename
 
-    #### Constructing the network
+    ################ Constructing the network ###########################
     #outputs = mod.fc_net(x, hid_dims=[500, 300], num_classes = num_classes)   ##
     #outputs = mod.resi_net(x, hid_dims=[500, 300], num_classes = num_classes)  ## ok very sfast
     #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width, num_classes = num_classes)    ## ok
     #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64], filter_size=5, num_lstm=128, seq_len=height, width=width, num_classes = num_classes)  ## ok
-    outputs = mod.RNN(x, num_lstm=32, seq_len=height, width=width, num_classes = num_classes)   ##ok
-    #outputs = mod.Dilated_CNN(x, num_filters=[8, 16, 32], seq_len=seq_len, width=width, num_classes = num_classes)
+    #outputs = mod.RNN(x, num_lstm=32, seq_len=height, width=width, num_classes = num_classes)   ##ok
+    outputs = mod.Dilated_CNN(x, num_filters=16, seq_len=seq_len, width=width, num_classes = num_classes)
 
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
@@ -95,7 +105,8 @@ def train(x):
     saver = tf.train.Saver(max_to_keep= 20)
 
     with tf.Session() as sess:
-        
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(sess=sess, coord=coord)
         #### Profiling
         options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
@@ -103,24 +114,25 @@ def train(x):
         outliers = []
         np.random.seed(1998745)
         sess.run(iter.initializer)   # every trial restart training
-        sess.run(iter_test.initializer)   # every trial restart training
+        sess.run(iter_test.initializer)    # every trial restart training
         sess.run(tf.global_variables_initializer())
         sess.run(tf.local_variables_initializer())
         acc_total_train = np.array([])
         acc_total_test = np.array([])
         loss_total_train = np.array([])
-        #sen_total_train = np.array([])   # sensitivity
-        #spe_total_train = np.array([])    # specificity
         # track the outlier files
         if not os.path.exists(logdir):
             os.makedirs(logdir)
         if not os.path.exists(results_dir):
             os.makedirs(results_dir)
-        for batch in range(2):#####3total_batches
+        for batch in range(total_batches):#####3
             save_name = results_dir + '/' + "_step{}_".format( batch)
-            filename =  sess.run(ele)   # (name, '1'/'0')
-            filename_test =  sess.run(ele_test)   # (name, '1'/'0')
-
+            
+            #data_train, labels_train, data_test, labels_test = sess.run([data_train, labels_train, data_test, labels_test])
+           
+            filename =  sess.run(ele)   # (name, 1/0)
+            filename_test =  sess.run(ele_test)   # (name, 1/0)
+            #batch_data, batch_labels = input_parser(file_path, label, num_classes=2)
             batch_data = []
             batch_labels = np.empty([0])
             for ind in range(len(filename)):
@@ -136,17 +148,17 @@ def train(x):
             writer.add_summary(summary, batch)
             
             ####### # Create the Timeline object, and write it to a json file
-            fetched_timeline = timeline.Timeline(run_metadata.step_stats)
-            chrome_trace = fetched_timeline.generate_chrome_trace_format()
-            with open(save_name + 'timeline_{}.json'.format(batch), 'w') as f:
-                f.write(chrome_trace)
+            #fetched_timeline = timeline.Timeline(run_metadata.step_stats)
+            #chrome_trace = fetched_timeline.generate_chrome_trace_format()
+            #with open(save_name + 'timeline_{}.json'.format(batch), 'w') as f:
+                #f.write(chrome_trace)
 
 
             ### record loss and accuracy
             #if acc < 0.35:
                 #outliers.append(filename)
             #ipdb.set_trace()
-            if batch % 1 == 0:
+            if batch % 10 == 0:
                 # track training
                 acc_total_train = np.append(acc_total_train, acc)
                 #sen_total_train = np.append(sen_total_train, sensi)   # sensitivity
@@ -177,7 +189,7 @@ def train(x):
 
                 func.save_data((acc_total_train, loss_total_train, acc_total_test), header='accuracy_train,loss_train,accuracy_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
         #np.savetxt('outliers.csv', outliers, fmt='%s', newline= ', ', delimiter=',')
-
+    coord.join(threads)
 
 
 if __name__ == "__main__":

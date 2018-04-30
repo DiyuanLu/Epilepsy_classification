@@ -16,11 +16,11 @@ import random
 import pickle
 
 
-def sampling(args, batch_size):
+def sampling(args):
     '''# a keras lambda layer computes arbitrary function on the output of a layer
 # so z is effectively combining mean and variance layers through sampling func 
 '''
-    _mean, _log_var, _batch_size = args
+    _mean, _log_var = args
     epsilon = K.random_normal(shape = (batch_size, latent_dim), mean = 0., stddev = epsilon_std)
     return _mean+K.exp(_log_var/2)*epsilon
 
@@ -32,17 +32,18 @@ if ifaverage:
     channel = 1
 else:
     channel  = 2
-original_dim = 1280
+original_dim = 128
+window = 128
 seq_shape = (original_dim, channel)
-intermediate_dim = 256
+intermediate_dim = 64
 latent_dim = 2
 
 nb_epochs = 2
 epsilon_std = 1.0
-data_dir = "data/npy_data/testF751testN1501_aver_zscore.npz"
+data_dir = "data/npy_data/sliding_window_ds_8testF751testN1501_aver.npz" #testF751testN1501_aver_zscoreds_8testF751testN1501_averageds_8testF751testN1501_average
 
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-results_dir= "results/vae-keras-ori-eeg/".format(batch_size)+ datetime
+results_dir= "results/vae-keras-ori-eeg-sliding/".format(batch_size)+ datetime
 logdir = results_dir+ "/model"
 if not os.path.exists(logdir):
     os.makedirs(logdir)
@@ -81,6 +82,26 @@ vae.compile(optimizer = 'adam', loss = vae_loss)
 data_file = np.load(data_dir)
 x_train, y_train, x_test, y_test = data_file["x_train"], data_file["y_train"], data_file["x_test"], data_file["y_test"]
 
+
+#####plot samples and predict label
+num_sample = 20
+sample_ind = np.random.choice(200, [num_sample])
+sample_img = x_test[sample_ind, :]
+sample_label = y_test[sample_ind, :]
+samples =sample_img.reshape(-1, window)
+plt.figure()
+for ii in range(num_sample):
+    ax1 = plt.subplot(5, 4, ii +1)  
+    plt.plot(samples[ii, :])
+    plt.xlabel("label: "+ np.str(np.argmax(sample_label[ii, :])))
+    #plt.setp(ax1.get_yticklabels(), visible = False)
+    plt.setp(ax1.get_xticklabels(), visible = False)
+plt.tight_layout()
+ipdb.set_trace()
+plt.savefig(results_dir + '/sampled_test.png', format = 'png')
+plt.close()
+
+
 # normalize input and make them float32 to run on GPU
 x_train = x_train.astype('float32')
 x_test = x_test.astype('float32')
@@ -91,7 +112,7 @@ x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
 
 
 # x_train is required for input and loss output as target
-history = vae.fit(x_train, x_train, shuffle = True, epochs = nb_epochs, batch_size = batch_size, validation_data = (x_test, x_test))
+history = vae.fit(x_train, shuffle = True, epochs = nb_epochs, batch_size = batch_size, validation_data = (x_test))
 
 with open(results_dir + '/trainHIstoryDIct', 'wb') as filepi:
     pickle.dump(history.history, filepi)
@@ -112,8 +133,9 @@ _x_decoded = X_bar(_h_decoded)
 generator =  Model(z_input, _x_decoded)
 
 #####plot sample reconstruction
+
 num_sample = 10
-z_sample = np.array([np.random.normal(0, 1, (num_sample, latent_dim))])
+z_sample = np.random.normal(0, 1, (num_sample, latent_dim))
 print "z_sample.shape", z_sample.shape
 x_decoded = generator.predict(z_sample)      ### start from random
 x_test_recon = generator.predict(x_test_encoded[0:num_sample, :])      # use the encoding from test reconstruct
@@ -124,7 +146,7 @@ for ii in range(num_sample):
     plt.plot(sampled_im)
 plt.savefig(results_dir + '/sampled_reconstructon.png', format='png')
 plt.close()
-
+ipdb.set_trace()
 
 plt.figure()
 for ii in range(5):
@@ -161,23 +183,22 @@ model_json = vae.to_json()
 with open(logdir + "/model.json", "w") as json_file:
     json_file.write(model_json)
 # serialize weights to HDF5
-vae.save_weights("model.h5")
+vae.save_weights(logdir + "/model.h5")
 print("Saved model to disk")
- 
 # later...
- 
 ## load json and create model
 json_file = open(logdir+'/model.json', 'r')
 loaded_model_json = json_file.read()
 json_file.close()
-loaded_model = model_from_json(loaded_model_json)
+loaded_model = model_from_json(loaded_model_json, {'batch_size': batch_size, 'latent_dim': latent_dim, 'epsilon_std':epsilon_std})  ### have to give the hyperparams
+
 # load weights into new model
 loaded_model.load_weights(logdir+"/model.h5")
 print("Loaded model from disk")
  
 ## evaluate loaded model on test data
-loaded_model.compile(loss = 'binary_crossentropy', optimizer = 'rmsprop', metrics = ['accuracy'])
-score = loaded_model.evaluate(X, Y, verbose = 0)
+loaded_model.compile(loss='binary_crossentropy', optimizer='rmsprop', metrics=['accuracy'])
+score = loaded_model.evaluate(x_test, x_test, batch_size=batch_size)
 print("%s: %.2f%%" % (loaded_model.metrics_names[1], score[1]*100))
 '''
 Epoch 1/20

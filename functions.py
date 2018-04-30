@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import ipdb
 import random
 import matplotlib.pylab as pylab
+import scipy.stats as stats
 params = {'legend.fontsize': 12,
           'figure.figsize': (10, 8.8),
          'axes.labelsize': 16,
@@ -80,29 +81,80 @@ def read_data(filename, ifaverage=False ):
         data = np.expand_dims(np.mean(np.vstack((x_data, y_data)) , axis=0), axis=0 )  ### only get an average signal
     else:
         data = np.vstack((x_data, y_data))  ### read the pair
+    #data = stats.zscore(data)        ## normalize the data
     return data.T   # output data shape (seq_len, channel)
 
+def input_parser(file_path, label, num_classes=2):
+    '''tensorflow map this function to all the files. read the whole file as a training sample'''
+    ### convert the label to a one-hot encoding
+    one_hot = tf.one_hot(label, num_classes)
+    #### read the file
+    ###
+    data = tf.read_file(file_path)  ##v, field_delim=",", na_value=""
+    #features = tf.transpose(tf.stack([col1, col2]))
 
-def get_Data(data_dir, data_dir_test, batch_size=20, pattern='*.csv', withlabel=True):
+    return data, one_hot
+
+def read_my_file_format(filename_queue):
+    reader = tf.WholeFileReader()
+    key, value = reader.read(filename_queue)
+    #red_defaults = [[0.0], [0.0]]
+    #data1, data2 = tf.decode_csv(value, record_defaults=record_defaults, field_delim=',')
+    #features = tf.transpose(tf.stack([data1, data2])) cor
+    
+    return value
+    
+def load_train_test_data_queue(data_dir, data_dir_test,  batch_size=20, pattern='Data*.csv', withlabel=True):
+    #### Get file names
+    files_wlabel_train = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, e.g. (name, '1'/'0')
+    files_wlabel_test = find_files(data_dir_test, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, e.g.  (name, '1'/'0')
+    files_train, labels_train = np.array(files_wlabel_train)[:, 0], np.array(np.array(files_wlabel_train)[:, 1]).astype(np.int)
+    files_test, labels_test = np.array(files_wlabel_test)[:, 0], np.array(files_wlabel_test)[:, 1].astype(np.int)   ##
+    ### convert names to tensor for slicing
+    files_train = tf.convert_to_tensor(files_train, dtype = tf.string) 
+    files_test = tf.convert_to_tensor(files_test, dtype = tf.string)
+    ### make input file queue
+    files_trainq = tf.train.string_input_producer(files_train)
+    files_testq = tf.train.string_input_producer(files_test)
+    ### preprocessing
+    features_train = read_my_file_format(files_trainq)
+    features_test = read_my_file_format(files_testq)
+    
+    min_after_dequeue = 10000
+    capacity = min_after_dequeue + 3 * batch_size
+    ### get shuffled batch
+    data_train, labels_train = tf.train.shuffle_batch([features_train, labels_train], batch_size=batch_size, capacity=capacity, min_after_dequeue=min_after_dequeue)
+    data_test, labels_test = tf.train.shuffle_batch([features_test, labels_test], batch_size=batch_size, capacity=capacity, min_after_dequeue=min_after_dequeue)
+
+    return data_train, labels_train, data_test, labels_test 
+    
+    
+
+def load_train_test_data(data_dir, data_dir_test,  batch_size=20, pattern='Data*.csv', withlabel=True):
+    '''Load saved file which has train_file_names,train_file_names, train_labels, test_labels'''
     with tf.name_scope("Data"):
-        #### Get data
-        files_train = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
-        files_test = find_files(data_dir_test, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
-        file_tensor_train = tf.convert_to_tensor(files_train, dtype=tf.string)## convert to tensor
-        file_tensor_test = tf.convert_to_tensor(files_test, dtype=tf.string)## convert to tensor
-        dataset = tf.data.Dataset.from_tensor_slices(file_tensor_train).repeat().batch(batch_size).shuffle(buffer_size=10000)
-        dataset_test = tf.data.Dataset.from_tensor_slices(file_tensor_test).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        #### Get file names
+        files_wlabel_train = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, e.g. (name, '1'/'0')
+        files_wlabel_test = find_files(data_dir_test, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, e.g.  (name, '1'/'0')
+
+        files_train, labels_train = np.array(files_wlabel_train)[:, 0], np.array(np.array(files_wlabel_train)[:, 1]).astype(np.int)
+        files_test, labels_test = np.array(files_wlabel_test)[:, 0], np.array(files_wlabel_test)[:, 1].astype(np.int)   ##         seperate the name and label
+        # create TensorFlow Dataset objects
+        dataset_train = tf.data.Dataset.from_tensor_slices((files_train, labels_train)).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        dataset_test = tf.data.Dataset.from_tensor_slices((files_test, labels_test)).repeat().batch(batch_size).shuffle(buffer_size=10000)
         ### map self-defined functions to the dataset
-        dataset = dataset.map(get_data_and_label)
-        dataset_test = dataset_test.map(get_data_and_label)
-        ## create the iterator
-        iter = dataset.make_initializable_iterator()
+        dataset_train = dataset_train.map(input_parser)
+        dataset_test = dataset_test.map(input_parser)
+        # create TensorFlow Iterator object
+        iter = dataset_train.make_initializable_iterator()
         iter_test = dataset_test.make_initializable_iterator()
         ele = iter.get_next()   #you get the filename
         ele_test = iter_test.get_next()   #you get the filename
         return ele, ele_test, iter, iter_test
 
-def load_and_save_data(data_dir, data_dir_test, pattern='ds_8*.csv', withlabel=True, ifaverage=False, num_classes=2):
+def load_and_save_data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True, ifaverage=False, num_classes=2):
+    '''Keras way of loading data
+    return: x_train, y_train, x_test, y_test'''
     #### Get data
     files_train = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
     files_test = find_files(data_dir_test, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
@@ -111,27 +163,32 @@ def load_and_save_data(data_dir, data_dir_test, pattern='ds_8*.csv', withlabel=T
     for ind in range(len(files_train)):
         if ind % 100 == 0:
             print "train", ind
-        data = read_data(files_train[ind][0], ifaverage=ifaverage)
-        data_train.append(data)
+        #data = read_data(files_train[ind][0], ifaverage=ifaverage)
+        #data_train.append(data)
         labels_train = np.append(labels_train, files_train[ind][1])
-    labels_train =  np.eye((num_classes))[labels_train.astype(int)]   # get one-hot lable
+    #labels_train =  np.eye((num_classes))[labels_train.astype(int)]   # get one-hot lable
 
     data_test = []
     labels_test = np.empty([0])
     for ind in range(len(files_test)):
         if ind % 100 == 0:
             print "test", ind
-        data = read_data(files_test[ind][0], ifaverage=ifaverage)
-        data_test.append(data)
+        #data = read_data(files_test[ind][0], ifaverage=ifaverage)
+        #data_test.append(data)
         labels_test = np.append(labels_test, files_test[ind][1])
-    labels_test =  np.eye((num_classes))[labels_test.astype(int)]   # get one-hot lable
-
-    np.savez("testF751testN1501", x_train=np.array(data_train), y_train=np.array(labels_train), x_test=np.array(data_test), y_test=np.array(labels_test))
+    #labels_test =  np.eye((num_classes))[labels_test.astype(int)]   # get one-hot lable
+    ipdb.set_trace()
+    np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
+    
+    np.savez("testF751testN1501_ori", x_train=np.array(data_train), y_train=np.array(labels_train), x_test=np.array(data_test), y_test=np.array(labels_test))
     return np.array(data_train), np.array(labels_train), np.array(data_test), np.array(labels_test)
 
-def load_data(data_dir):
-    ff = np.load(data_dir)
-    return ff["x_train"], ff["y_train"], ff["x_test"], ff["y_test"]
+#x_train=xx_train, y_train=yy_train, x_test=xx_test, y_test=yy_test
+
+
+def load_my_data():
+    '''given the data dir, load train and test'''
+    
 #def my_input_fn(file_path, perform_shuffle=False, repeat_count=1):
     #def _parse_line(line):
         #### decode the line into variables
@@ -223,6 +280,36 @@ def smooth(x, window_len=11,window='hanning'):
     y=np.convolve(w/w.sum(),s,mode='valid')
     return y
 
+def opp_sliding_window(data_x, data_y, ws, ss):
+    '''apply a sliding window to original data and get segments of a certain window lenght
+    e.g.
+    # Sensor data is segmented using a sliding window mechanism
+    X_test, y_test = opp_sliding_window(X_test, y_test, SLIDING_WINDOW_LENGTH, SLIDING_WINDOW_STEP)
+    '''
+    data_x = sliding_window(data_x,(ws,data_x.shape[1]),(ss,1))
+    data_y = np.asarray([[i[-1]] for i in sliding_window(data_y,ws,ss)])
+    return data_x.astype(np.float32), data_y.reshape(len(data_y)).astype(np.uint8)
+
+def sliding_window(data_x, data_y, window=128, stride=64):
+    '''
+    Param:
+        datax: array-like data shape (num_seq, seq_len, channel)
+        data_y: shape (num_seq, num_classes)
+        window: int, number of frames to stack together to predict future
+        noverlap: int, how many frames overlap with last window
+    Return:
+        expand_x : shape(num_seq, num_segment, window)
+        expand_y : shape(num_seq, num_segment, num_classes)
+        '''
+    num_seg = (data_x.shape[1] - window + 1) // stride
+    shape = (data_x.shape[0], num_seg, window)      ## done change the num_seq
+    strides = (data_x.itemsize, data_x.itemsize * stride, data_x.itemsize)    ##
+    expand_x = np.lib.stride_tricks.as_strided(data_x, shape=shape, strides=strides).reshape(-1, window)
+    expand_y = np.repeat(data_y,  num_seg, axis=0).reshape(data_y.shape[0], num_seg, data_y.shape[1]).reshape(-1, data_y.shape[1])
+    return expand_x, expand_y
+
+#def normalize_data(data):
+    
 ###################### plots ##########################
 def PCA_plot(pca_fit):
     traces = []
@@ -321,6 +408,8 @@ def plotdata(data, color='darkorchid', xlabel="training time", ylabel="loss", sa
 
 
 if __name__ == "__main__":
-    data_dir = ["data/train_data", "data/test_data"]
-    for ind, dirr  in enumerate(data_dir):
-        multiprocessing_func(dirr )
+    data_dir = "data/train_data"
+    data_dir_test = "data/test_data"
+    #for ind, dirr  in enumerate(data_dir):
+        #multiprocessing_func(dirr )
+    get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
