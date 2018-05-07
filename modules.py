@@ -173,7 +173,7 @@ def RNN(x, num_lstm=128, seq_len=1280, width=2, num_classes = 2):
         tf.summary.histogram('activation', net)
     return net
 
-def Dilated_CNN(x, num_filters=32, dilation_rate=[2, 8, 16], kernel_size = [5, 1], pool_size=[2, 1], pool_strides=[2, 2], seq_len=10240, width=1, num_classes = 10):
+def Dilated_CNN(x, num_filters=16, dilation_rate=[2, 8, 16], kernel_size = [5, 1], pool_size=[2, 1], pool_strides=[2, 2], seq_len=10240, width=1, num_classes = 10):
     '''Perform convolution on 1d data
     Atrous Spatial Pyramid Pooling includes:
         (a) one 1*1 convolution and three 3*3 convolutions with rates = (2,8,16) when output stride =16,
@@ -218,7 +218,7 @@ def Dilated_CNN(x, num_filters=32, dilation_rate=[2, 8, 16], kernel_size = [5, 1
     at_pool1x1 = tf.layers.conv2d(
                                                  inputs = net,
                                                  filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
-                                                 kernel_size = [1, 1],
+                                                 kernel_size =kernel_size,
                                                  padding = 'same',
                                                  activation = tf.nn.relu)
     print "at_pool1x1", at_pool1x1.shape
@@ -241,7 +241,7 @@ def Dilated_CNN(x, num_filters=32, dilation_rate=[2, 8, 16], kernel_size = [5, 1
     at_pool3x3_3 = tf.layers.conv2d(
                                                  inputs = net,
                                                  filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
-                                                 kernel_size = [3, 3],
+                                                 kernel_size = kernel_size,
                                                  dilation_rate = (16, 1),
                                                  padding = 'same',
                                                  activation = None)

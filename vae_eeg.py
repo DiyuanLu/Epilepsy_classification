@@ -12,20 +12,21 @@ from scipy.misc import imsave
 import ipdb
 import datetime
 import functions as func
-from tensorflow.examples.tutorials.mnist import input_data    # DOWNLOAD DATA
-mnist = input_data.read_data_sets("data/MNIST_data/",  one_hot=True)
+#from tensorflow.examples.tutorials.mnist import input_data    # DOWNLOAD DATA
+#mnist = input_data.read_data_sets("data/MNIST_data/",  one_hot=True)
 
 version = "vae_CNN_MNIST"     ###"VAE_ds16"  #
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 data_dir = "data/train_data"
 data_dir_test = "data/test_data"
-ratio = 20
+ratio = 2
 save_every = 25 * ratio
 plot_every = 20 * ratio
 test_every = 5 * ratio
 num_iterations = 100 * ratio + 1   # 50
 recording_interval = 1000    # 1000   #
 print_result = 10 * ratio
+pattern = 'ds_8*.csv'
 ### Hyperparams
 #seq_len = 1280 #   640     #10240    #28 * 28   seq=width
 #width = seq_len
@@ -33,7 +34,7 @@ height, width = 28, 28
 hid_dim1 = 500   # Encoder: input -- hidden1 -- latent1 -- hidden2 -- latent2
 hid_dim2 = 200
 latent_dim = 2
-batch_size = 100
+batch_size = 20
 epochs = 50
 total_batches =  epochs * 3000 // batch_size + 1
 results_dir = "results/" + version + '/' + datetime +'bs_' +np.str(batch_size)
@@ -257,18 +258,21 @@ def decoder(inputs_dec, num_filters=[25, 1], kernel_size=5, scope=None):
 
 
 def train(input_enc):
-    ##### Get data
-    #files_train = func.find_files(data_dir, pattern="ds_8*", withlabel=True )### traverse all the files in the dir, and divide into batches, from
-    #files_test = func.find_files(data_dir_test, pattern="ds_8*", withlabel=True)### traverse all the files in the dir, and divide into batches, from
-    #file_tensor_train = tf.convert_to_tensor(files_train, dtype=tf.string)## convert to tensor
-    #file_tensor_test = tf.convert_to_tensor(files_test, dtype=tf.string)## convert to tensor
-    #dataset = tf.data.Dataset.from_tensor_slices(file_tensor_train).repeat().batch(batch_size).shuffle(buffer_size=10000)
-    #dataset_test = tf.data.Dataset.from_tensor_slices(file_tensor_test).repeat().batch(batch_size).shuffle(buffer_size=10000)
-    ### create the iterator
-    #iter = dataset.make_initializable_iterator()
-    #iter_test = dataset.make_initializable_iterator()
-    #ele = iter.get_next()   #you get the filename
-    #ele_test = iter_test.get_next()   #you get the filename
+    with tf.name_scope("Data"):
+        ### Get data
+        files_wlabel_train = func.find_files(data_dir, pattern=pattern, withlabel=True )### traverse all the files in the dir, and divide into batches, from
+        files_wlabel_test = func.find_files(data_dir_test, pattern=pattern, withlabel=True )### traverse all the files in the dir, and divide into batches, from
+        files_train, labels_train = np.array(files_wlabel_train)[:, 0], np.array(np.array(files_wlabel_train)[:, 1]).astype(np.int)
+        files_test, labels_test = np.array(files_wlabel_test)[:, 0], np.array(files_wlabel_test)[:, 1].astype(np.int)   ## seperate the name and label
+        dataset_train = tf.data.Dataset.from_tensor_slices(files_wlabel_train).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        dataset_test = tf.data.Dataset.from_tensor_slices(files_wlabel_test).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        # create TensorFlow Dataset objects
+        dataset_train = tf.data.Dataset.from_tensor_slices((files_train, labels_train)).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        dataset_test = tf.data.Dataset.from_tensor_slices((files_test, labels_test)).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        iter = dataset_train.make_initializable_iterator()
+        iter_test = dataset_test.make_initializable_iterator()
+        ele = iter.get_next()   #you get the filename
+        ele_test = iter_test.get_next()   #you get the filename
 
     ### Graph
     mu_1, sigma_1, z = encoder(inputs_enc)
@@ -300,8 +304,8 @@ def train(input_enc):
     init = tf.global_variables_initializer()
     sess = tf.InteractiveSession()
     sess.run(init)
-    #sess.run(iter.initializer)
-    #sess.run(iter_test.initializer)
+    sess.run(iter.initializer)
+    sess.run(iter_test.initializer)
     ## Add ops to save and restore all the variables.
     saver = tf.train.Saver()
 
@@ -315,25 +319,27 @@ def train(input_enc):
     ### get the real data
     for batch in range(num_iterations):
         save_name = results_dir + '/' + "_step{}_".format( batch)
-        batch_data = np.round(mnist.train.next_batch(batch_size)[0])
-        #files_train =  sess.run(ele)   # name, '1'/'0'
-        #files_test =  sess.run(ele_test)   # name, '1'/'0'
-        #batch_data = np.empty([0, seq_len ])
-        #for ind in range(len(files_train)):
-            #data = np.average(func.read_data(files_train[ind][0]), axis=0)
-            #batch_data = np.vstack((batch_data, data))
-        #batch_data = batch_data.reshape[-1, height, width]
+        filename_train, labels_train =  sess.run(ele)   # names, 1s/0s
+        filename_test, labels_test =  sess.run(ele_test)   # names, 1s/0s
+        data_train = []
+        for ind in range(len(filename_train)):
+            data = func.read_data(filename_train[ind], ifaverage=ifaverage, ifnorm=ifnorm)
+            data_train.append(data)
+        labels_train =  np.eye((num_classes))[labels_train.astype(int)]   # get one-hot lable
+
         #run our optimizer on our data
-        _, summary = sess.run([optimizer, summaries], feed_dict={inputs_enc: batch_data})
+        _, summary = sess.run([optimizer, summaries], feed_dict={inputs_enc: data_train})
         writer.add_summary(summary, batch)
         ### test
-        if (batch % 100 == 0):
-            test_data = mnist.test.images[0:200]
-            #test_data = np.empty([0, seq_len])
-            #for ind in range(len(files_test)):
-                #data = np.average(func.read_data(files_test[ind][0]), axis=0)
-                #test_data = np.vstack((test_data, data))
-            test_temp = VAE_loss.eval({input_enc : test_data})
+        if (batch % 10 == 0):
+           ##################### test ####################################### 
+            data_test = []
+            for ind in range(len(filename_test)):
+                data = func.read_data(filename_test[ind], ifaverage=ifaverage)
+                data_test.append(data)
+            labels_test =  np.eye((num_classes))[labels_test.astype(int)]   # get one-hot lable
+                
+            test_temp = VAE_loss.eval({input_enc : data_test})
             test_vae_array = np.append(test_vae_array, test_temp)
             
             summary = sess.run(test_loss_sum, {test_loss: test_temp})    ## add test score to summary

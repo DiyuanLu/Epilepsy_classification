@@ -110,7 +110,6 @@ def plot_prior(model_No):
       for j, xi in enumerate(y_values):
         z[0:2] = np.array([[xi, yi]])
         x_reconstruction = reconstruction.eval(feed_dict={z: z})
-
         canvas[(nx - ii - 1) * 28:(nx - ii) * 28, j *
                28:(j + 1) * 28] = reconstruction[0].reshape(28, 28)
     imsave(os.path.join(logdir,

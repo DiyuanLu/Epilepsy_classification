@@ -74,7 +74,6 @@ x_test=x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
 # x_train is required for input and loss output as target
 vae.fit(x_train,x_train, shuffle=True, epochs=nb_epochs, batch_size=batch_size, validation_data=(x_test, x_test))
 
-
 # encoder is the inference network
 encoder=Model(X, z_mean)
 

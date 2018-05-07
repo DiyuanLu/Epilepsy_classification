@@ -209,32 +209,35 @@ def load_files_train_test_data(data_dir, data_dir_test):
 
 def load_and_save_data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True, ifaverage=False, num_classes=2):
     '''Keras way of loading data
-    return: x_train, y_train, x_test, y_test'''
+    return: x_train, y_train, x_test, y_test
+        x_train: [num_samples, seq_len, channel]
+        y_train: [num_samples, ]  ## int label
+        x_train: [num_samples, seq_len, channel]
+        x_train: [num_samples, ]  ## int label
+        '''
     #### Get data
-    files_train = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
-    files_test = find_files(data_dir_test, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
+    files_wlabel_train = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
+    files_wlabel_test = find_files(data_dir_test, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
+    files_train, labels_train = np.array(files_wlabel_train)[:, 0], np.array(np.array(files_wlabel_train)[:, 1]).astype(np.int)
+    files_test, labels_test = np.array(files_wlabel_test)[:, 0], np.array(files_wlabel_test)[:, 1].astype(np.int)   ## 
     data_train = []
-    labels_train = np.empty([0])
     for ind in range(len(files_train)):
-        if ind % 100 == 0:
-            print "train", ind
-        #data = read_data(files_train[ind][0], ifaverage=ifaverage)
-        #data_train.append(data)
-        labels_train = np.append(labels_train, files_train[ind][1])
-    #labels_train =  np.eye((num_classes))[labels_train.astype(int)]   # get one-hot lable
+        if ind % 500 == 0:
+            print "train", ind, 'files_train', files_train[ind], 'label', labels_train[ind]
+        data = read_data(files_train[ind], ifaverage=ifaverage, ifnorm=True)
+        data_train.append(data)
+
 
     data_test = []
-    labels_test = np.empty([0])
     for ind in range(len(files_test)):
         if ind % 100 == 0:
-            print "test", ind
-        #data = read_data(files_test[ind][0], ifaverage=ifaverage)
-        #data_test.append(data)
-        labels_test = np.append(labels_test, files_test[ind][1])
-    #labels_test =  np.eye((num_classes))[labels_test.astype(int)]   # get one-hot lable
-    np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
+            print "test", ind, 'files_test', files_test[ind], 'label', labels_test[ind]
+        data = read_data(files_test[ind], ifaverage=ifaverage, ifnorm=True)
+        data_test.append(data)
 
-    np.savez("testF751testN1501_ori", x_train=np.array(data_train), y_train=np.array(labels_train), x_test=np.array(data_test), y_test=np.array(labels_test))
+    #np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
+    np.savez("testF751testN1501_ori_norm0~1", x_train=np.array(data_train), y_train=np.array(labels_train), x_test=np.array(data_test), y_test=np.array(labels_test))
+    ####
     return np.array(data_train), np.array(labels_train), np.array(data_test), np.array(labels_test)
 
 #x_train=xx_train, y_train=yy_train, x_test=xx_test, y_test=yy_test
@@ -409,7 +412,7 @@ def plot_learning_curve(train_scores, test_scores , num_trial=1, title="Learning
     plt.savefig(save_name, format="png")
     plt.close()
 
-def plot_smooth_shadow_curve(datas, colors=['darkcyan'], xlabel='training batches / 20', ylabel='accuracy', title='Loss during training', labels='accuracy_train', save_name="loss"):
+def plot_smooth_shadow_curve(datas, window_len=25, colors=['darkcyan'], xlabel='training batches / 20', ylabel='accuracy', title='Loss during training', labels='accuracy_train', save_name="loss"):
     '''plot a smooth version of noisy data with mean and std as shadow
     data: a list of variables values, shape: (batches, )
     color: list of prefered colors
@@ -449,7 +452,7 @@ def plotdata(data, color='darkorchid', xlabel="training time", ylabel="loss", sa
 
 
 if __name__ == "__main__":
-    #data_dir = "data/train_data"
+    data_dir = "data/train_data"
     data_dir_test = "data/test_data"
     #data_dir = 'data/test_files'
     # read_data_save_tfrecord(data_dir)
@@ -459,9 +462,10 @@ if __name__ == "__main__":
     # multiprocessing_func(data_dir)
     # read_from_tfrecord("data/test_files/test_files.tfrecords")
     #read_tfrecord()
-    read_data_save_one_csv(data_dir_test)
+    #read_data_save_one_csv(data_dir_test)
     #filename = "data/train_data/train_data.csv"
     #read_data(filename)
+    load_and_save_data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True, ifaverage=False, num_classes=2)
 
 
 

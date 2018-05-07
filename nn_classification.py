@@ -14,13 +14,13 @@ import time
 from tensorflow.python.client import timeline
 
 data_dir = "data/train_data"
-#data_dir = "data/whole_train_data/train_data/"
 data_dir_test = "data/test_data"
-#data_dir_test = "data/whole_train_data/test_data/"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 200
 save_every = 100
-seq_len = 1280   ##10240  #
+test_every = 10
+smooth_win_len = 20
+seq_len = 10240  #1280   ##
 height = seq_len
 ifaverage = False
 if  ifaverage:
@@ -33,9 +33,9 @@ num_classes = 2
 epochs = 200
 total_batches =  epochs * 3000 // batch_size + 1 #5001               #
 num_classes = 2
-pattern='ds_8*.csv'
+pattern='Data*.csv'
 version = 'whole_{}_DilatedCNN'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTMDilatedCNN
-results_dir= "results/" + version + '/cpu-batch{}/' .format(batch_size)+ datetime
+results_dir= "results/" + version + '/cpu-batch{}/ori_' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
 
 
@@ -120,11 +120,10 @@ def train(x):
                 data_train.append(data)
             labels_train =  np.eye((num_classes))[labels_train.astype(int)]   # get one-hot lable
 
-            _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: data_train, y: labels_train}, options=options, run_metadata=run_metadata)
-            # We collect profiling infos for each step.
+            _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: data_train, y: labels_train})# , options=options, run_metadata=run_metadata We collect profiling infos for each step.
             writer.add_summary(summary, batch)
 
-            if batch % 10 == 0:
+            if batch % test_every == 0:
                 # track training
                 acc_total_train = np.append(acc_total_train, acc)
                 loss_total_train = np.append(loss_total_train, c)
@@ -143,16 +142,16 @@ def train(x):
             if batch % save_every == 0:
                 saver.save(sess, logdir + '/batch' + str(batch))
 
-            if batch % plot_every == 0 and batch >= plot_every:   #
+            if batch % plot_every == 0 and batch > test_every * smooth_win_len:   #
 
-                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], xlabel= 'training batches / {}'.format(batch_size), ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_batch_{}".format(batch))
+                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], window_len=smooth_win_len, xlabel= 'training batches / {}'.format(batch_size), ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_batch_{}".format(batch))
 
-                func.plot_smooth_shadow_curve([loss_total_train], colors=['c'], xlabel= 'training batches / {}'.format(batch_size), ylabel="loss", title='Loss in training',labels=['training loss'], save_name=results_dir+ "/training_loss_batch_{}".format(batch))
+                func.plot_smooth_shadow_curve([loss_total_train], window_len=smooth_win_len, colors=['c'], xlabel= 'training batches / {}'.format(batch_size), ylabel="loss", title='Loss in training',labels=['training loss'], save_name=results_dir+ "/training_loss_batch_{}".format(batch))
 
                 func.save_data((acc_total_train, loss_total_train, acc_total_test), header='accuracy_train,loss_train,accuracy_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
         #np.savetxt('outliers.csv', outliers, fmt='%s', newline= ', ', delimiter=',')
-    coord.request_stop()
-    coord.join(threads)
+    #coord.request_stop()
+    #coord.join(threads)
 
 
 if __name__ == "__main__":

@@ -9,11 +9,11 @@ from keras import objectives
 from keras import backend as K
 import datetime
 import ipdb
-from tensorflow.python import debug as tfdb          ## for debuging
 from keras.models import model_from_json
 import functions as func
 import random
 import pickle
+
 
 
 def sampling(args):
@@ -27,23 +27,23 @@ def sampling(args):
 random.seed(1998)
 
 batch_size =  15            # train: 5955    test:  1485 samples
-ifaverage = True                    ###False   ###
+ifaverage = False                    ###False   ###
 if ifaverage:
     channel = 1
 else:
     channel  = 2
-original_dim = 128
+original_dim = 10240#128
 window = 128
 seq_shape = (original_dim, channel)
 intermediate_dim = 64
-latent_dim = 2
+latent_dim = 5
 
 nb_epochs = 2
 epsilon_std = 1.0
-data_dir = "data/npy_data/sliding_window_ds_8testF751testN1501_aver.npz" #testF751testN1501_aver_zscoreds_8testF751testN1501_averageds_8testF751testN1501_average
+data_dir = "data/npy_data/testF751testN1501_ori_norm0~1.npz" #testF751testN1501_aver_zscoreds_8testF751testN1501_averageds_8testF751testN1501_average
 
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-results_dir= "results/vae-keras-ori-eeg-sliding/".format(batch_size)+ datetime
+results_dir= "results/vae-keras-ori-eeg-norm/".format(batch_size)+ datetime
 logdir = results_dir+ "/model"
 if not os.path.exists(logdir):
     os.makedirs(logdir)
@@ -78,26 +78,24 @@ vae = Model(X , X_reconstruction)
 vae.compile(optimizer = 'adam', loss = vae_loss)
 
 # load data for training
-#(x_train, y_train),(x_test, y_test) = mnist.load_data()
 data_file = np.load(data_dir)
 x_train, y_train, x_test, y_test = data_file["x_train"], data_file["y_train"], data_file["x_test"], data_file["y_test"]
-
 
 #####plot samples and predict label
 num_sample = 20
 sample_ind = np.random.choice(200, [num_sample])
-sample_img = x_test[sample_ind, :]
-sample_label = y_test[sample_ind, :]
-samples =sample_img.reshape(-1, window)
+sample_img = x_test[sample_ind, :, :]   ### 10240 * 2
+sample_label = y_test[sample_ind]   ### 
+#samples =sample_img.reshape(-1, window)
 plt.figure()
 for ii in range(num_sample):
     ax1 = plt.subplot(5, 4, ii +1)  
-    plt.plot(samples[ii, :])
-    plt.xlabel("label: "+ np.str(np.argmax(sample_label[ii, :])))
+    plt.plot(sample_img[ii, :, 0])
+    plt.xlabel("label: "+ np.str(sample_label[ii]))
+    plt.xlim([0, original_dim])
     #plt.setp(ax1.get_yticklabels(), visible = False)
     plt.setp(ax1.get_xticklabels(), visible = False)
 plt.tight_layout()
-ipdb.set_trace()
 plt.savefig(results_dir + '/sampled_test.png', format = 'png')
 plt.close()
 
@@ -112,7 +110,7 @@ x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
 
 
 # x_train is required for input and loss output as target
-history = vae.fit(x_train, shuffle = True, epochs = nb_epochs, batch_size = batch_size, validation_data = (x_test))
+history = vae.fit(x_train, x_train, shuffle = True, epochs = nb_epochs, batch_size = batch_size, validation_data = (x_test, x_test))
 
 with open(results_dir + '/trainHIstoryDIct', 'wb') as filepi:
     pickle.dump(history.history, filepi)
@@ -120,7 +118,7 @@ with open(results_dir + '/trainHIstoryDIct', 'wb') as filepi:
 encoder = Model(X, z_mean)
 x_test_encoded = encoder.predict(x_test, batch_size = batch_size)
 plt.figure(figsize = (6,6))
-plt.scatter(x_test_encoded[:,0], x_test_encoded[:,1], c = np.argmax(y_test, axis=1))
+plt.scatter(x_test_encoded[:,0], x_test_encoded[:,1], c = y_test)
 plt.colorbar()
 plt.savefig(results_dir + '/latent_scatter.png', format='png')
 plt.close()
@@ -131,46 +129,58 @@ z_input = Input(shape = (latent_dim,))
 _h_decoded = h_decoder(z_input)
 _x_decoded = X_bar(_h_decoded)
 generator =  Model(z_input, _x_decoded)
-
 #####plot sample reconstruction
-
 num_sample = 10
 z_sample = np.random.normal(0, 1, (num_sample, latent_dim))
 print "z_sample.shape", z_sample.shape
 x_decoded = generator.predict(z_sample)      ### start from random
 x_test_recon = generator.predict(x_test_encoded[0:num_sample, :])      # use the encoding from test reconstruct
-sampled_im = x_decoded[0].reshape(original_dim, channel )
+x_test_recon = x_test_recon.reshape(-1, original_dim, channel )      # batch_size, 20480 -- batch_size, 10240, 2
+sampled_im = x_decoded.reshape(-1, original_dim, channel )   ## batch_size, 20480 -- batch_size, 10240, 2
 plt.figure()
 for ii in range(num_sample):
     ax1 = plt.subplot(5, 2, ii +1)  
-    plt.plot(sampled_im)
+    plt.plot(sampled_im[ii, :, 0])
+    plt.xlim([0, original_dim])
+plt.tight_layout()
 plt.savefig(results_dir + '/sampled_reconstructon.png', format='png')
 plt.close()
-ipdb.set_trace()
+
 
 plt.figure()
+x_test_reshape = x_test[sample_ind, :].reshape(-1, original_dim, channel )
+y_test_label = y_test[sample_ind]
 for ii in range(5):
-    ax1 = plt.subplot(5,2, ii *2 +1)  
-    plt.plot(x_test_recon[ii, :], label='test_recon_{}'.format(ii))
+    ax1 = plt.subplot(5,2, ii *2 +1)
+    plt.setp(ax1.get_xticklabels(), visible = False)
+    plt.xlabel("label:{}".format(np.str(y_test_label[ii])))
+    plt.plot(x_test_recon[ii, :, 0], label='test_recon_{}'.format(ii))
     ax2 = plt.subplot(5,2, (ii+1) *2 )  
-    plt.plot(x_test[ii, :], label='test_original_{}'.format(ii))
-plt.legend()
+    plt.plot(x_test_reshape[ii, :, 0], label='test_original_{}'.format(ii))
+    plt.setp(ax2.get_xticklabels(), visible = False)
+    plt.xlabel("label:{}".format(np.str(y_test_label[ii])))
+    if ii == 0:
+        ax1.set_tile("reconstruction")
+        ax2.set_tile("original")
 plt.savefig(results_dir + '/test_reconstructons.png', format='png')
 plt.close()
 
 #####plot prior
 # 2d manifold of images by exploring quantiles of normal dist (using the inverse of cdf)
-n = 3
+
+num = 3
 figure  =  plt.subplot()
-grid_x = norm.ppf(np.linspace(0.05, 0.95, n))
-grid_y = norm.ppf(np.linspace(0.05, 0.95, n))
+grid_x = np.linspace(0.05, 0.95, num)##norm.ppf(np.linspace(0.05, 0.95, num))
+grid_y = np.linspace(0.05, 0.95, num)
 #latent = np.random.normal(0, 1, latent_dim)
-f, axarr = plt.subplots(n, n, sharex='col', sharey='row')
-for ii, yi in enumerate(grid_x):
-    for jj,xi in enumerate(grid_y):
+f, axarr = plt.subplots(num, num, sharex='col', sharey='row')
+ipdb.set_trace()
+for ii, yi in enumerate(grid_y):
+    for jj,xi in enumerate(grid_x):
         latent =  np.array([[xi, yi]]) 
         x_decoded = generator.predict(latent)
-        axarr[ii, jj].plot(x_decoded)
+        x_decoded = x_decoded.reshape(-1, original_dim, channel ) 
+        axarr[ii, jj].plot(x_decoded[:, 0])
 # Fine-tune figure; hide x ticks for top plots and y ticks for right plots
 plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
 plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
