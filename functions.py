@@ -7,15 +7,16 @@ import numpy as np
 import tensorflow as tf
 import csv
 import codecs
-from scipy.signal import decimate
+from scipy.signal import decimate    ###downsampling
 import multiprocessing
 import os
 import sys
-from functools import partial
+from functools import partial      ### for multiprocessing
 import matplotlib.pyplot as plt
 import ipdb
 import random
 import matplotlib.pylab as pylab
+from scipy.stats import zscore
 # import scipy.stats as stats
 params = {'legend.fontsize': 12,
           'figure.figsize': (10, 8.8),
@@ -71,7 +72,7 @@ def multiprocessing_func(data_dir):
     pool.close()
 
 ###################### Data munipulation##########################
-def read_data(filename, ifaverage=False, ifnorm=True ):
+def read_data(filename, ifnorm=True ):
     '''read data from .csv
     return:
         data: 2d array [seq_len, channel]'''
@@ -83,17 +84,10 @@ def read_data(filename, ifaverage=False, ifnorm=True ):
         y_data = np.append(y_data, y)
     x_data = x_data.astype(np.float32)
     y_data = y_data.astype(np.float32)
-    if ifaverage:
-        data = np.expand_dims(np.mean(np.vstack((x_data, y_data)) , axis=0), axis=0 )  ### only get an average signal
-    else:
-        data = np.vstack((x_data, y_data))  ### read the pair 2 * 10240
-    
+    data = np.vstack((x_data, y_data))  ### read the pair 2 * 10240
     if ifnorm:   ### 2 * 10240  normalize the data into [0.0, 1.0]]
-        seq_max = np.max(data, axis=1)
-        seq_min = np.min(data, axis=1)
-        data_norm = np.array([(data[i, :] - seq_min[i]) / (seq_max[i] - seq_min[i]) for i in range(data.shape[0])])
-
-    data = data_norm
+        data_norm = zscore(data)
+        data = data_norm
 
     return data.T   #data.T  output data shape (seq_len, channel)
 
@@ -114,100 +108,13 @@ def read_data_save_one_csv(data_dir):
             label = 0
         if ind%699 == 0:
             print "ind", ind, "out of ", len(filenames)
-        data = read_data(filename, ifaverage=False )   ### falttened data 1 * 20480
+        data = read_data(filename )   ### falttened data 1 * 20480
         #ipdb.set_trace()
         data = np.hstack((label, data))  #### [label, data1 * 20480]
         whole_data.append(data)
     np.savetxt(whole_csv, np.array(whole_data), header='label, flattened data', delimiter=',', fmt="%10.5f", comments='')
 
-
-def read_my_data(file_q, num_classes=2):
-    '''Read data from queue filenames 
-    filename_queue = tf.train.string_input_producer(["file0.csv", "file1.csv"])
-    '''
-    reader = tf.TextLineReader()
-    key, value = reader.read(file_q)
-    FIELD_DEFAULTS = [[0.0]] * 20481
-    value = tf.decode_csv(value, FIELD_DEFAULTS)
-    one_hot = tf.one_hot(tf.cast(value[0], tf.int32), num_classes)
-    data = value[1:]
-    return tf.reshape(data, [2, -1]), one_hot
-#filename_queue = tf.train.string_input_producer(["data/whole_train_data/train_data.csv", "data/whole_train_data/test_data.csv"])
-
-def load_train_test_data_queue(data_dir, data_dir_test,  batch_size=20, pattern='Data*.csv', withlabel=True):
-    #### Get file names
-    #ipdb.set_trace()
-    files_train = find_files(data_dir, pattern=pattern, withlabel=False )### traverse all the files in the dir, and divide into batches, e.g. (name, '1'/'0')
-    files_test = find_files(data_dir_test, pattern=pattern, withlabel=False)### traverse all the files in the dir, and divide into batches, e.g.  (name, '1'/'0')
-    ### convert names to tensor for slicing
-    #files_train = tf.convert_to_tensor(files_train, dtype = tf.string)
-    #files_test = tf.convert_to_tensor(files_test, dtype = tf.string)
-    ### make input file queue
-    files_trainq = tf.train.string_input_producer(files_train)
-    files_testq = tf.train.string_input_producer(files_test)
-    ### preprocessing
-    #ipdb.set_trace()
-    features_train, labels_train =  read_my_data(files_trainq, num_classes=2)
-    features_test, labels_test =  read_my_data(files_testq, num_classes=2)
-
-    min_after_dequeue = 10000
-    capacity = min_after_dequeue + 3 * batch_size
-    ### get shuffled batch
-    data_train, labels_train = tf.train.shuffle_batch([features_train, labels_train], batch_size=1, capacity=capacity, min_after_dequeue=min_after_dequeue)
-    data_test, labels_test = tf.train.shuffle_batch([features_test, labels_test], batch_size=1, capacity=capacity, min_after_dequeue=min_after_dequeue)
-
-    #with tf.Session() as sess:
-        ## Start populating the filename queue.
-        #coord = tf.train.Coordinator()
-        #threads = tf.train.start_queue_runners(coord=coord)
-
-        #for i in range(1200):
-        ## Retrieve a single instance:
-        #example, label = sess.run([features, col5])
-
-    #coord.request_stop()
-    #coord.join(threads)
-
-    return data_train, labels_train, data_test, labels_test
-
-def input_parser(row, num_classes=2):
-    '''tensorflow map this function to all the files. read the whole file as a training sample'''
-    FIELD_DEFAULTS = [[0.0]] * 20481
-    ipdb.set_trace()
-    value = tf.decode_csv(row, FIELD_DEFAULTS)
-    ### convert the label to a one-hot encoding
-    one_hot = tf.one_hot(value[0], num_classes)
-    #### read the file
-    data = value[1:]
-    return data, one_hot
-    
-def load_train_test_data(data_dir, data_dir_test,  batch_size=20, pattern='Data_*.csv', withlabel=True):
-    '''get filenames in data_dir, and data_dir_test, put them into dataset'''
-    with tf.name_scope("Data"):
-        #### Get file names
-        files_train = find_files(data_dir, pattern=pattern, withlabel=False )### traverse all the files in the dir, and divide into batches, e.g. (name, '1'/'0') or (name)
-        files_test = find_files(data_dir_test, pattern=pattern, withlabel=False)### traverse all the files in the dir, and divide into batches, e.g.  (name, '1'/'0') or (name)
-        # create TensorFlow Dataset objects
-        dataset_train = tf.data.Dataset.from_tensor_slices(files_train)
-        dataset_test = tf.data.Dataset.from_tensor_slices(files_test)
-        ### map self-defined functions to the dataset
-        ipdb.set_trace()
-        dataset_train = dataset_train.flat_map(lambda filename: tf.data.TextLineDataset(filename).map(input_parser)).repeat().batch(batch_size).shuffle(buffer_size=256)
-        dataset_test = dataset_test.flat_map(lambda filename: tf.data.TextLineDataset(filename).map(input_parser)).repeat().batch(batch_size).shuffle(buffer_size=10000)
-
-        # create TensorFlow Iterator object
-        iter = dataset_train.make_initializable_iterator()
-        iter_test = dataset_test.make_initializable_iterator()
-        ele = iter.get_next()   #you get the filename
-        ele_test = iter_test.get_next()   #you get the filename
-        return ele, ele_test, iter, iter_test
-
-def load_files_train_test_data(data_dir, data_dir_test):
-    files_train = find_files(data_dir, pattern=pattern, withlabel=False )### traverse all the files in the dir, and divide into batches, e.g. (name, '1'/'0') or (name)
-    files_test = find_files(data_dir_test, pattern=pattern, withlabel=False)
-        
-
-def load_and_save_data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True, ifaverage=False, num_classes=2):
+def load_and_save_data(data_dir, data_dir_test, pattern='*ds_8.csv', withlabel=True, num_classes=2):
     '''Keras way of loading data
     return: x_train, y_train, x_test, y_test
         x_train: [num_samples, seq_len, channel]
@@ -218,33 +125,30 @@ def load_and_save_data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=T
     #### Get data
     files_wlabel_train = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
     files_wlabel_test = find_files(data_dir_test, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
+
     files_train, labels_train = np.array(files_wlabel_train)[:, 0], np.array(np.array(files_wlabel_train)[:, 1]).astype(np.int)
     files_test, labels_test = np.array(files_wlabel_test)[:, 0], np.array(files_wlabel_test)[:, 1].astype(np.int)   ## 
     data_train = []
     for ind in range(len(files_train)):
         if ind % 500 == 0:
             print "train", ind, 'files_train', files_train[ind], 'label', labels_train[ind]
-        data = read_data(files_train[ind], ifaverage=ifaverage, ifnorm=True)
+        data = read_data(files_train[ind], ifnorm=True)
         data_train.append(data)
-
 
     data_test = []
     for ind in range(len(files_test)):
         if ind % 100 == 0:
             print "test", ind, 'files_test', files_test[ind], 'label', labels_test[ind]
-        data = read_data(files_test[ind], ifaverage=ifaverage, ifnorm=True)
+        data = read_data(files_test[ind], ifnorm=True)
         data_test.append(data)
 
     #np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
-    np.savez("testF751testN1501_ori_norm0~1", x_train=np.array(data_train), y_train=np.array(labels_train), x_test=np.array(data_test), y_test=np.array(labels_test))
+    np.savez("sub700-norm0~1", x_train=np.array(data_train), y_train=np.array(labels_train), x_test=np.array(data_test), y_test=np.array(labels_test))
     ####
     return np.array(data_train), np.array(labels_train), np.array(data_test), np.array(labels_test)
 
 #x_train=xx_train, y_train=yy_train, x_test=xx_test, y_test=yy_test
 
-
-def load_my_data():
-    '''given the data dir, load train and test'''
 
 def my_input_fn(file_path, perform_shuffle=False, epochs=1, num_classes=2):
     def _parse_line(line):
@@ -334,23 +238,28 @@ def opp_sliding_window(data_x, data_y, ws, ss):
     data_y = np.asarray([[i[-1]] for i in sliding_window(data_y,ws,ss)])
     return data_x.astype(np.float32), data_y.reshape(len(data_y)).astype(np.uint8)
 
-def sliding_window(data_x, data_y, window=128, stride=64):
+def sliding_window(data_x, data_y, num_seg=5, window=128, stride=64):
     '''
     Param:
-        datax: array-like data shape (num_seq, seq_len, channel)
+        datax: array-like data shape (batch_size, seq_len, channel)
         data_y: shape (num_seq, num_classes)
+        num_seg: number of segments you want from one seqeunce
         window: int, number of frames to stack together to predict future
         noverlap: int, how many frames overlap with last window
     Return:
-        expand_x : shape(num_seq, num_segment, window)
+        expand_x : shape(batch_size, num_segment, window, channel)
         expand_y : shape(num_seq, num_segment, num_classes)
         '''
-    num_seg = (data_x.shape[1] - window + 1) // stride
-    shape = (data_x.shape[0], num_seg, window)      ## done change the num_seq
-    strides = (data_x.itemsize, data_x.itemsize * stride, data_x.itemsize)    ##
-    expand_x = np.lib.stride_tricks.as_strided(data_x, shape=shape, strides=strides).reshape(-1, window)
+    assert len(data_x.shape) == 3
+    expand_data = []
+    for ii in range(data_x.shape[0]):
+        num_seg = (data_x.shape[1] - window) // stride + 1
+        shape = (num_seg, window, data_x.shape[-1])      ## done change the num_seq
+        strides = (data_x.itemsize*stride*data_x.shape[-1], data_x.itemsize*data_x.shape[-1], data_x.itemsize)
+        expand_x = np.lib.stride_tricks.as_strided(data_x[ii, :, :], shape=shape, strides=strides)
+        expand_data.append(expand_x)
     expand_y = np.repeat(data_y,  num_seg, axis=0).reshape(data_y.shape[0], num_seg, data_y.shape[1]).reshape(-1, data_y.shape[1])
-    return expand_x, expand_y
+    return np.array(expand_data).reshape(-1, window, data_x.shape[-1]), expand_y
 
 #def normalize_data(data):
 
@@ -430,6 +339,7 @@ def plot_smooth_shadow_curve(datas, window_len=25, colors=['darkcyan'], xlabel='
         plt.plot(np.arange(sizes), data_smooth, '-', linewidth=2, color=colors[ind], label=labels[ind])
     plt.ylabel(ylabel)
     plt.xlabel(xlabel)
+    plt.ylim([0, 1])
     plt.legend(loc="best")
     plt.title(title)
     plt.savefig(save_name, format="png")
@@ -451,21 +361,21 @@ def plotdata(data, color='darkorchid', xlabel="training time", ylabel="loss", sa
 ###################### Data munipulation##########################
 
 
-if __name__ == "__main__":
-    data_dir = "data/train_data"
-    data_dir_test = "data/test_data"
-    #data_dir = 'data/test_files'
-    # read_data_save_tfrecord(data_dir)
-    #for ind, dirr  in enumerate(data_dir):
-        #multiprocessing_func(dirr )
-    # get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
-    # multiprocessing_func(data_dir)
-    # read_from_tfrecord("data/test_files/test_files.tfrecords")
-    #read_tfrecord()
-    #read_data_save_one_csv(data_dir_test)
-    #filename = "data/train_data/train_data.csv"
-    #read_data(filename)
-    load_and_save_data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True, ifaverage=False, num_classes=2)
+#if __name__ == "__main__":
+    #data_dir = "data/sub_train/sub_8"
+    #data_dir_test = "data/sub_test"
+    ##data_dir = 'data/test_files'
+    ## read_data_save_tfrecord(data_dir)
+    ##for ind, dirr  in enumerate(data_dir):
+        ##multiprocessing_func(dirr )
+    ## get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
+    ## multiprocessing_func(data_dir)
+    ## read_from_tfrecord("data/test_files/test_files.tfrecords")
+    ##read_tfrecord()
+    ##read_data_save_one_csv(data_dir_test)
+    ##filename = "data/train_data/train_data.csv"
+    ##read_data(filename)
+    #load_and_save_data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True, ifaverage=False, num_classes=2)
 
 
 
@@ -635,3 +545,26 @@ if __name__ == "__main__":
         ## Wait for threads to stop
         #coord.join(thread)
 
+#def load_train_test_data_queue(data_dir, data_dir_test,  batch_size=20, pattern='Data*.csv', withlabel=True):
+    ##### Get file names
+    ##ipdb.set_trace()
+    #files_train = find_files(data_dir, pattern=pattern, withlabel=False )### traverse all the files in the dir, and divide into batches, e.g. (name, '1'/'0')
+    #files_test = find_files(data_dir_test, pattern=pattern, withlabel=False)### traverse all the files in the dir, and divide into batches, e.g.  (name, '1'/'0')
+    #### convert names to tensor for slicing
+    ##files_train = tf.convert_to_tensor(files_train, dtype = tf.string)
+    ##files_test = tf.convert_to_tensor(files_test, dtype = tf.string)
+    #### make input file queue
+    #files_trainq = tf.train.string_input_producer(files_train)
+    #files_testq = tf.train.string_input_producer(files_test)
+    #### preprocessing
+    ##ipdb.set_trace()
+    #features_train, labels_train =  read_my_data(files_trainq, num_classes=2)
+    #features_test, labels_test =  read_my_data(files_testq, num_classes=2)
+
+    #min_after_dequeue = 10000
+    #capacity = min_after_dequeue + 3 * batch_size
+    #### get shuffled batch
+    #data_train, labels_train = tf.train.shuffle_batch([features_train, labels_train], batch_size=1, capacity=capacity, min_after_dequeue=min_after_dequeue)
+    #data_test, labels_test = tf.train.shuffle_batch([features_test, labels_test], batch_size=1, capacity=capacity, min_after_dequeue=min_after_dequeue)
+
+    #return data_train, labels_train, data_test, labels_test

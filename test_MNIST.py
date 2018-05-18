@@ -48,7 +48,8 @@ def train(x):
     #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width, num_classes = num_classes)    ## ok
     #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64], filter_size=5, num_lstm=128, seq_len=height, width=width, num_classes = num_classes)  ## ok
     #outputs = mod.RNN(x, num_lstm=64, seq_len=height, width=width, num_classes = num_classes)   ##ok
-    outputs = mod.Dilated_CNN(x, num_filters=8, dilation_rate=[2, 8, 16], kernel_size = [3, 3], pool_size=[2, 2], pool_strides=[2, 2], seq_len=height, width=width, num_classes = num_classes) ##ok
+    #outputs = mod.Dilated_CNN(x, num_filters=8, dilation_rate=[2, 8, 16], kernel_size = [3, 3], pool_size=[2, 2], pool_strides=[2, 2], seq_len=height, width=width, num_classes = num_classes) ##ok
+    outputs = mod.Atrous_CNN(x, num_filters_cnn=[4, 8, 16], dilation_rate=[2, 4, 8, 16], kernel_size = [10, 1], seq_len=height, width=width, num_classes = 10) ##ok
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):

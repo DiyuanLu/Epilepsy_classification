@@ -12,6 +12,8 @@ import ipdb
 import os
 import functions as func
 import pyeeg
+
+
 def autocorrelation(x) :
     """
     Compute the autocorrelation of the signal, based on the properties of the

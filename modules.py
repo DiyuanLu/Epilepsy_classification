@@ -80,26 +80,40 @@ def resi_net(x, hid_dims=[500, 300], num_classes = 2):
                                                                 scale = True)
         return outputs
         
-def CNN(x, num_filters=[16, 32, 64], seq_len=10240, width=1, num_classes = 2):
-    '''Perform convolution on 1d data'''
-    '''Perform convolution on 1d data'''
+def CNN(x, num_filters=[16, 32, 64], num_block=3, seq_len=10240, width=1, num_classes = 2):
+    '''Perform convolution on 1d data
+    Param:
+        x: input data, 3D,array, shape=[batch_size, seq_len, width]
+        num_filters: number of filterse in one serial-conv-ayer, i,e. one block)
+        num_block: number of residual blocks
+    return:
+        predicted logits
+        '''
     ## Input layer
     seq_len = seq_len
-    inputs = tf.reshape(x, [-1, seq_len, width, 1])   
+    inputs = tf.reshape(x, [-1, seq_len, width, 1])   ###
     net = inputs
-    # Convolutional Layer 
-    for layer_id, num_outputs in enumerate(num_filters):   ## avoid the code repetation
-        with tf.variable_scope('block_{}'.format(layer_id)) as layer_scope:
-            net = tf.layers.conv2d(
-                                                inputs = net,
-                                                filters = num_outputs,
-                                                kernel_size = [5, 1],
-                                                padding = 'same',
-                                                activation=tf.nn.relu)
-            print net.shape
-            net = tf.layers.max_pooling2d(inputs=net, pool_size=[2, 1], strides=[2, 1])
-            print net.shape
+    for jj in range(2): ### make 4 of the 16, 32, 64 conv blocks and add residual connection
+        # Convolutional Layer
+        for layer_id, num_outputs in enumerate(num_filters):   ## avoid the code repetation
+            with tf.variable_scope('Resiblock_{}_layer_{}'.format(jj, layer_id)) as layer_scope:
+                net = tf.layers.conv2d(
+                                                    inputs = net,
+                                                    filters = num_outputs,
+                                                    kernel_size = [10, 1],   ### using a  wider kernel size helps
+                                                    padding = 'same',
+                                                    activation=tf.nn.relu)
+                print 'resi', jj, "layer", layer_id, "net", net.shape
+                if jj < 2:
+                    net = tf.layers.max_pooling2d(inputs=net, pool_size=[2, 1], strides=[2, 1])
+        #### high-way net
+        H = tf.layers.dense(net, units=num_outputs, activation=tf.nn.relu, name="denseH{}".format(jj))
+        T = tf.layers.dense(net, units=num_outputs, activation=tf.nn.sigmoid, name="denseT{}".format(jj))
+        C = 1. - T
+        net = H * T + net * C
+        print "resi net ", net.shape
     ### Logits layer
+    #ipdb.set_trace()
     net = tf.reshape(net, [-1,  net.shape[1]*net.shape[2]*net.shape[3]])
     net = tf.layers.dense(inputs=net, units=500, activation=tf.nn.relu)
     #net = tf.layers.dropout(inputs=net, rate=0.75)
@@ -109,7 +123,7 @@ def CNN(x, num_filters=[16, 32, 64], seq_len=10240, width=1, num_classes = 2):
     return logits
 
 
-def DeepConvLSTM(x, num_filters=[64, 64], filter_size=5, num_lstm=128, seq_len=1280, width=2, num_classes = 2):
+def DeepConvLSTM(x, num_filters=[64, 64], filter_size=5, num_lstm=128, seq_len=10240, width=2, num_classes = 2):
     '''work is inspired by
     https://github.com/sussexwearlab/DeepConvLSTM/blob/master/DeepConvLSTM.ipynb
     in-shape: (BATCH_SIZE, 1, SLIDING_WINDOW_LENGTH, NB_SENSOR_CHANNELS)
@@ -173,26 +187,118 @@ def RNN(x, num_lstm=128, seq_len=1280, width=2, num_classes = 2):
         tf.summary.histogram('activation', net)
     return net
 
-def Dilated_CNN(x, num_filters=16, dilation_rate=[2, 8, 16], kernel_size = [5, 1], pool_size=[2, 1], pool_strides=[2, 2], seq_len=10240, width=1, num_classes = 10):
+#def Dilated_CNN(x, num_filters=16, dilation_rate=[2, 8, 16], kernel_size = [10, 1], pool_size=[2, 1], pool_strides=[2, 2], seq_len=10240, width=1, num_classes = 10):
+    #'''Perform convolution on 1d data
+    #Atrous Spatial Pyramid Pooling includes:
+        #(a) one 1*1 convolution and three 3*3 convolutions with rates = (2,8,16) when output stride =16,
+        #all with 256 filters and batch normalization,
+        #(b) the image-level features as described in https://arxiv.org/abs/1706.05587
+    #:param net: tensor of shape [BATCH_SIZE, WIDTH, HEIGHT, DEPTH]
+    #:param scope: scope name of the aspp layer
+    #:return: network layer with aspp applyed to it.
+    #x: shape [batch_size, height, width, channels]
+    #feature_map_size (4,)
+    #image_level_features (?, 1, 1, 1)
+    #image_level_features (?, 1, 1, 8)
+    #image_level_features (?, ?, ?, 8)
+    #at_pool1x1 (?, 28, 28, 8)
+    #at_pool3x3_1 (?, 28, 28, 8)
+    #at_pool3x3_2 (?, 28, 28, 8)
+    #concat net  (?, 28, 28, 32)
+    #net  (?, 28, 28, 2)
+    #net  (?, 1568)
+    #'''
+    ### Input layer
+    #net = tf.reshape(x,  [-1, seq_len, width, 1])
+    ##net = inputs
+    #feature_map_size = tf.shape(net)
+    #print "feature_map_size", feature_map_size.shape
+    ## apply global average pooling
+    #image_level_features = tf.reduce_mean(net, [1, 2], name='image_level_global_pool', keep_dims=True)
+    #print "image_level_features", image_level_features.shape
+    #image_level_features = tf.layers.conv2d(
+                                                                        #inputs = image_level_features,
+                                                                        #filters = num_filters,
+                                                                        #kernel_size=[1, 1],
+                                                                        #activation=tf.nn.relu)
+    #print "image_level_features", image_level_features.shape
+    #image_level_features = tf.image.resize_bilinear(
+                                                                #image_level_features,
+                                                                #(feature_map_size[1], feature_map_size[2])
+                                                                #)
+    #print "image_level_features", image_level_features.shape
+    ## dialted Convolutional Layer
+    ##### dilated layers
+    #at_pool1x1 = tf.layers.conv2d(
+                                                 #inputs = net,
+                                                 #filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
+                                                 #kernel_size =kernel_size,
+                                                 #padding = 'same',
+                                                 #activation = tf.nn.relu)
+    #print "at_pool1x1", at_pool1x1.shape
+    #at_pool3x3_1 = tf.layers.conv2d(
+                                                 #inputs = net,
+                                                 #filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
+                                                 #kernel_size = kernel_size,
+                                                 #dilation_rate = (8, 1),
+                                                 #padding = 'same',
+                                                 #activation = tf.nn.relu)
+    #print "at_pool3x3_1", at_pool3x3_1.shape
+    #at_pool3x3_2 = tf.layers.conv2d(
+                                                 #inputs = net,
+                                                 #filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
+                                                 #kernel_size = kernel_size,
+                                                 #dilation_rate = (32, 1),
+                                                 #padding = 'same',
+                                                 #activation = tf.nn.relu)
+    #print "at_pool3x3_2", at_pool3x3_2.shape
+    #at_pool3x3_3 = tf.layers.conv2d(
+                                                 #inputs = net,
+                                                 #filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
+                                                 #kernel_size = kernel_size,
+                                                 #dilation_rate = (128, 1),
+                                                 #padding = 'same',
+                                                 #activation = None)
+    #print "at_pool3x3_3", at_pool3x3_3.shape
+    #ipdb.set_trace()
+    #net = tf.concat((image_level_features, at_pool1x1, at_pool3x3_1, at_pool3x3_2, at_pool3x3_3), axis=3,
+                                #name="concat")
+    #print "concat net ", net.shape
+    #net = tf.layers.conv2d(
+                                                 #inputs = net,
+                                                 #filters = num_filters / 4,   ##[filter_height, filter_width, in_channels, out_channels]
+                                                 #kernel_size = [1, 1],
+                                                 #padding = 'same',
+                                                 #activation = tf.nn.relu)
+    #print "net ", net.shape
+    #tf.summary.histogram('activation', net)
+    #net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
+    #net = tf.layers.flatten(net )
+    #print "net ", net.shape
+    #net = tf.layers.dense(inputs = net, units=200, activation = tf.nn.relu)
+    #### Logits layer
+    #logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
+    #'''
+    #batch 0 loss 2.3174462 accuracy 0.07
+    #batch 10 loss 1.7063526 accuracy 0.69
+    #batch 50 loss 1.5800242 accuracy 0.88
+    #batch 100 loss 1.5421643 accuracy 0.92
+    #batch 150 loss 1.5268363 accuracy 0.94
+    #batch 200 loss 1.5248604 accuracy 0.91'''
+    #return logits
+
+def Atrous_CNN(x, num_filters_cnn=[4, 8, 16], dilation_rate=[2, 4, 8, 16], kernel_size = [10, 1], seq_len=10240, width=1, num_classes = 10):
     '''Perform convolution on 1d data
     Atrous Spatial Pyramid Pooling includes:
+    https://sthalles.github.io/deep_segmentation_network/
         (a) one 1*1 convolution and three 3*3 convolutions with rates = (2,8,16) when output stride =16,
         all with 256 filters and batch normalization,
         (b) the image-level features as described in https://arxiv.org/abs/1706.05587
-    :param net: tensor of shape [BATCH_SIZE, WIDTH, HEIGHT, DEPTH]
-    :param scope: scope name of the aspp layer
+    :param
+        net: tensor of shape [batch, in_height, in_width, in_channels].
+        :param scope: scope name of the aspp layer
     :return: network layer with aspp applyed to it.
     x: shape [batch_size, height, width, channels]
-    feature_map_size (4,)
-    image_level_features (?, 1, 1, 1)
-    image_level_features (?, 1, 1, 8)
-    image_level_features (?, ?, ?, 8)
-    at_pool1x1 (?, 28, 28, 8)
-    at_pool3x3_1 (?, 28, 28, 8)
-    at_pool3x3_2 (?, 28, 28, 8)
-    concat net  (?, 28, 28, 32)
-    net  (?, 28, 28, 2)
-    net  (?, 1568)
     '''
     ## Input layer
     net = tf.reshape(x,  [-1, seq_len, width, 1])
@@ -204,70 +310,66 @@ def Dilated_CNN(x, num_filters=16, dilation_rate=[2, 8, 16], kernel_size = [5, 1
     print "image_level_features", image_level_features.shape
     image_level_features = tf.layers.conv2d(
                                                                         inputs = image_level_features,
-                                                                        filters = num_filters,
+                                                                        filters = num_filters_cnn[0],
                                                                         kernel_size=[1, 1],
                                                                         activation=tf.nn.relu)
     print "image_level_features", image_level_features.shape
-    image_level_features = tf.image.resize_bilinear(
-                                                                image_level_features,
-                                                                (feature_map_size[1], feature_map_size[2])
-                                                                )
-    print "image_level_features", image_level_features.shape
-    # dialted Convolutional Layer
-    #### dilated layers
-    at_pool1x1 = tf.layers.conv2d(
+    #net = tf.image.resize_bilinear(
+                                                                #image_level_features,
+                                                                #(feature_map_size[1], feature_map_size[2])
+                                                                #)
+    #print "image_level_features", net.shape
+    '''###################### Classic Convolutional Layer #################'''
+    for ind, num_filter in enumerate(num_filters_cnn):
+        with tf.variable_scope("block_{}".format(ind)) as layer_scope:
+            net = tf.layers.conv2d(
+                                                inputs = net,
+                                                filters = num_filter,
+                                                kernel_size=kernel_size,
+                                                padding = 'same',
+                                                activation=tf.nn.relu)
+            net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
+            print "net ", ind, net.shape
+            
+    '''####################### Atrous_CNN #####################''' 
+    for jj, rate in enumerate(dilation_rate):
+        with tf.variable_scope("atrous_block_{}".format(jj + ind)) as layer_scope:
+            #net = tf.nn.atrous_conv2d(
+                                                        #net,
+                                                        #[10, 1, 1, 1],   ##[filter_height, filter_width, in_channels, out_channels]
+                                                        #[rate, rate],
+                                                        #padding='same')
+            net = tf.layers.conv2d(
                                                  inputs = net,
-                                                 filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
-                                                 kernel_size =kernel_size,
+                                                 filters = num_filters_cnn[-1],   ##[filter_height, filter_width, in_channels, out_channels]
+                                                 kernel_size = kernel_size,
+                                                 dilation_rate = (dilation_rate[jj], 1),
                                                  padding = 'same',
                                                  activation = tf.nn.relu)
-    print "at_pool1x1", at_pool1x1.shape
-    at_pool3x3_1 = tf.layers.conv2d(
-                                                 inputs = net,
-                                                 filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
-                                                 kernel_size = kernel_size,
-                                                 dilation_rate = (2, 1),
-                                                 padding = 'same',
-                                                 activation = tf.nn.relu)
-    print "at_pool3x3_1", at_pool3x3_1.shape
-    at_pool3x3_2 = tf.layers.conv2d(
-                                                 inputs = net,
-                                                 filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
-                                                 kernel_size = kernel_size,
-                                                 dilation_rate = (8, 1),
-                                                 padding = 'same',
-                                                 activation = tf.nn.relu)
-    print "at_pool3x3_2", at_pool3x3_2.shape
-    at_pool3x3_3 = tf.layers.conv2d(
-                                                 inputs = net,
-                                                 filters = num_filters,   ##[filter_height, filter_width, in_channels, out_channels]
-                                                 kernel_size = kernel_size,
-                                                 dilation_rate = (16, 1),
-                                                 padding = 'same',
-                                                 activation = None)
-    print "at_pool3x3_3", at_pool3x3_3.shape
-    net = tf.concat((image_level_features, at_pool1x1, at_pool3x3_1, at_pool3x3_2, at_pool3x3_3), axis=3,
-                                name="concat")
-    print "concat net ", net.shape
+            net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
+            print "atrous net ", ind, net.shape
+
     net = tf.layers.conv2d(
                                                  inputs = net,
-                                                 filters = num_filters / 4,   ##[filter_height, filter_width, in_channels, out_channels]
+                                                 filters = 1,   ##[filter_height, filter_width, in_channels, out_channels]
                                                  kernel_size = [1, 1],
                                                  padding = 'same',
                                                  activation = tf.nn.relu)
-    print "net ", net.shape
+
+    print "net conv2d ", net.shape
     tf.summary.histogram('activation', net)
-    net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
+    '''########### Dense layer ##################3'''
     net = tf.layers.flatten(net )
-    print "net ", net.shape
+    #ipdb.set_trace()
+    #net = tf.reshape(net, [-1, 1] )
+    print "flatten net ", net.shape
+    net = tf.layers.dense(inputs = net, units=500, activation = tf.nn.relu)
+    net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
     net = tf.layers.dense(inputs = net, units=200, activation = tf.nn.relu)
+    net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
+    print "net ", net.shape
     ### Logits layer
     logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
-    '''
-    batch 0 loss 2.3174462 accuracy 0.07
-    batch 10 loss 1.7063526 accuracy 0.69
-    batch 50 loss 1.5800242 accuracy 0.88
-    batch 100 loss 1.5421643 accuracy 0.92
-    batch 150 loss 1.5268363 accuracy 0.94
-    batch 200 loss 1.5248604 accuracy 0.91'''
+    ''''''
     return logits
+

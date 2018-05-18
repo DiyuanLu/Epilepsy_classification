@@ -26,21 +26,21 @@ def sampling(args):
 
 random.seed(1998)
 
-batch_size =  15            # train: 5955    test:  1485 samples
+batch_size =  20            # train: 5955    test:  1485 samples
 ifaverage = False                    ###False   ###
 if ifaverage:
     channel = 1
 else:
     channel  = 2
-original_dim = 10240#128
+original_dim = 1280###10240#128
 window = 128
 seq_shape = (original_dim, channel)
 intermediate_dim = 64
-latent_dim = 5
+latent_dim = 2
 
-nb_epochs = 2
+nb_epochs = 50
 epsilon_std = 1.0
-data_dir = "data/npy_data/testF751testN1501_ori_norm0~1.npz" #testF751testN1501_aver_zscoreds_8testF751testN1501_averageds_8testF751testN1501_average
+data_dir = "data/npy_data/sub700-norm0~1.npz" #testF751testN1501_aver_zscoreds_8testF751testN1501_averageds_8testF751testN1501_average
 
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 results_dir= "results/vae-keras-ori-eeg-norm/".format(batch_size)+ datetime
@@ -54,21 +54,21 @@ print results_dir
 #sess = K.get_session()
 #sess = tfdb.LocalCLIDebugWrapperSession(sess)
 #K.set_session(sess)
-################## Encoder ##################
+'''################## Encoder ##################'''
 X = Input(batch_shape = (batch_size, original_dim*channel))
 net  =  Dense(intermediate_dim, activation = 'relu')(X)
 z_mean = Dense(latent_dim)(net)
 z_log_var = Dense(latent_dim)(net)
 z = Lambda(sampling, output_shape = (latent_dim,))([z_mean, z_log_var])
 
-#################### Decoder graph #########################
+'''#################### Decoder graph #########################'''
 h_decoder = Dense(intermediate_dim, activation = 'relu')
 X_bar = Dense(original_dim * channel, activation = 'sigmoid')
 # we instantiate these layers separately so as to reuse them later
 dec_net = h_decoder(z)
 X_reconstruction  = X_bar(dec_net )
 
-############ loss ######################3
+'''############ loss ######################3'''
 def vae_loss(x, x_rec):
     reconst_loss = objectives.binary_crossentropy(x, x_rec)
     kl_loss = -0.5*K.sum(1 + z_log_var - K.square(z_mean) - K.exp(z_log_var), axis = -1)
@@ -80,10 +80,10 @@ vae.compile(optimizer = 'adam', loss = vae_loss)
 # load data for training
 data_file = np.load(data_dir)
 x_train, y_train, x_test, y_test = data_file["x_train"], data_file["y_train"], data_file["x_test"], data_file["y_test"]
-
+ipdb.set_trace()
 #####plot samples and predict label
 num_sample = 20
-sample_ind = np.random.choice(200, [num_sample])
+sample_ind = np.random.choice(100, [num_sample])
 sample_img = x_test[sample_ind, :, :]   ### 10240 * 2
 sample_label = y_test[sample_ind]   ### 
 #samples =sample_img.reshape(-1, window)
@@ -107,7 +107,6 @@ x_test = x_test.astype('float32')
 # convert 28x28 images into 784-vectors
 x_train = x_train.reshape((len(x_train), np.prod(x_train.shape[1:])))
 x_test = x_test.reshape((len(x_test), np.prod(x_test.shape[1:])))
-
 
 # x_train is required for input and loss output as target
 history = vae.fit(x_train, x_train, shuffle = True, epochs = nb_epochs, batch_size = batch_size, validation_data = (x_test, x_test))
@@ -142,6 +141,7 @@ for ii in range(num_sample):
     ax1 = plt.subplot(5, 2, ii +1)  
     plt.plot(sampled_im[ii, :, 0])
     plt.xlim([0, original_dim])
+    plt.xlabel('z:{}'.format(z_sample[ii, :]))
 plt.tight_layout()
 plt.savefig(results_dir + '/sampled_reconstructon.png', format='png')
 plt.close()
@@ -153,38 +153,42 @@ y_test_label = y_test[sample_ind]
 for ii in range(5):
     ax1 = plt.subplot(5,2, ii *2 +1)
     plt.setp(ax1.get_xticklabels(), visible = False)
-    plt.xlabel("label:{}".format(np.str(y_test_label[ii])))
-    plt.plot(x_test_recon[ii, :, 0], label='test_recon_{}'.format(ii))
+    plt.xlabel("z:{}".format(x_test_encoded[0:num_sample, :][ii]))
+    plt.plot(x_test_recon[ii, :, 0])
+    plt.xlim([0, original_dim])
     ax2 = plt.subplot(5,2, (ii+1) *2 )  
-    plt.plot(x_test_reshape[ii, :, 0], label='test_original_{}'.format(ii))
+    plt.plot(x_test_reshape[ii, :, 0])
     plt.setp(ax2.get_xticklabels(), visible = False)
     plt.xlabel("label:{}".format(np.str(y_test_label[ii])))
+    plt.xlim([0, original_dim])
     if ii == 0:
-        ax1.set_tile("reconstruction")
-        ax2.set_tile("original")
+        ax1.set_title("reconstruction")
+        ax2.set_title("original")
 plt.savefig(results_dir + '/test_reconstructons.png', format='png')
 plt.close()
 
 #####plot prior
 # 2d manifold of images by exploring quantiles of normal dist (using the inverse of cdf)
 
-num = 3
+num = 5
 figure  =  plt.subplot()
 grid_x = np.linspace(0.05, 0.95, num)##norm.ppf(np.linspace(0.05, 0.95, num))
 grid_y = np.linspace(0.05, 0.95, num)
 #latent = np.random.normal(0, 1, latent_dim)
 f, axarr = plt.subplots(num, num, sharex='col', sharey='row')
-ipdb.set_trace()
+
 for ii, yi in enumerate(grid_y):
     for jj,xi in enumerate(grid_x):
         latent =  np.array([[xi, yi]]) 
         x_decoded = generator.predict(latent)
-        x_decoded = x_decoded.reshape(-1, original_dim, channel ) 
-        axarr[ii, jj].plot(x_decoded[:, 0])
+        x_decoded = x_decoded.reshape(-1, original_dim, channel )   ## x_decoded.shape = (1, 10240, 2)
+        axarr[ii, jj].plot(x_decoded[0, :, 0], 'royalblue')
+        axarr[ii, jj].set_xlim(0, original_dim)
+ipdb.set_trace()
 # Fine-tune figure; hide x ticks for top plots and y ticks for right plots
 plt.setp([a.get_xticklabels() for a in axarr[0, :]], visible=False)
 plt.setp([a.get_yticklabels() for a in axarr[:, 1]], visible=False)
-plt.savefig(results_dir + '/prior_3*3.png', format='png')
+plt.savefig(results_dir + '/prior_{}*{}.png'.format(num, num), format='png')
 plt.close()
 ipdb.set_trace()
 
