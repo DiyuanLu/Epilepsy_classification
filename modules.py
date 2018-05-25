@@ -93,7 +93,7 @@ def CNN(x, num_filters=[16, 32, 64], num_block=3, seq_len=10240, width=1, num_cl
     seq_len = seq_len
     inputs = tf.reshape(x, [-1, seq_len, width, 1])   ###
     net = inputs
-    for jj in range(2): ### make 4 of the 16, 32, 64 conv blocks and add residual connection
+    for jj in range(num_block): ### make 4 of the 16, 32, 64 conv blocks and add residual connection
         # Convolutional Layer
         for layer_id, num_outputs in enumerate(num_filters):   ## avoid the code repetation
             with tf.variable_scope('Resiblock_{}_layer_{}'.format(jj, layer_id)) as layer_scope:
@@ -106,11 +106,13 @@ def CNN(x, num_filters=[16, 32, 64], num_block=3, seq_len=10240, width=1, num_cl
                 print 'resi', jj, "layer", layer_id, "net", net.shape
                 if jj < 2:
                     net = tf.layers.max_pooling2d(inputs=net, pool_size=[2, 1], strides=[2, 1])
+                net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
         #### high-way net
         H = tf.layers.dense(net, units=num_outputs, activation=tf.nn.relu, name="denseH{}".format(jj))
         T = tf.layers.dense(net, units=num_outputs, activation=tf.nn.sigmoid, name="denseT{}".format(jj))
         C = 1. - T
         net = H * T + net * C
+        net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
         print "resi net ", net.shape
     ### Logits layer
     #ipdb.set_trace()
@@ -331,7 +333,8 @@ def Atrous_CNN(x, num_filters_cnn=[4, 8, 16], dilation_rate=[2, 4, 8, 16], kerne
             net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
             print "net ", ind, net.shape
             
-    '''####################### Atrous_CNN #####################''' 
+    '''####################### Atrous_CNN #####################'''
+    pyramid_pool_feature = []
     for jj, rate in enumerate(dilation_rate):
         with tf.variable_scope("atrous_block_{}".format(jj + ind)) as layer_scope:
             #net = tf.nn.atrous_conv2d(
@@ -348,14 +351,17 @@ def Atrous_CNN(x, num_filters_cnn=[4, 8, 16], dilation_rate=[2, 4, 8, 16], kerne
                                                  activation = tf.nn.relu)
             net = tf.contrib.layers.batch_norm(net, center = True, scale = True)
             print "atrous net ", ind, net.shape
-
+            pyramid_pool_feature.append(net)
+    #ipdb.set_trace()
+    net = tf.concat(([pyramid_pool_feature[i] for i in range( len(pyramid_pool_feature))]), axis=3,
+                                name="concat")
+    
     net = tf.layers.conv2d(
                                                  inputs = net,
                                                  filters = 1,   ##[filter_height, filter_width, in_channels, out_channels]
                                                  kernel_size = [1, 1],
                                                  padding = 'same',
                                                  activation = tf.nn.relu)
-
     print "net conv2d ", net.shape
     tf.summary.histogram('activation', net)
     '''########### Dense layer ##################3'''
@@ -373,3 +379,6 @@ def Atrous_CNN(x, num_filters_cnn=[4, 8, 16], dilation_rate=[2, 4, 8, 16], kerne
     ''''''
     return logits
 
+
+def WaveNet(x, ):
+    

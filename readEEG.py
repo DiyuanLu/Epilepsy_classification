@@ -25,7 +25,37 @@ def autocorrelation(x) :
     pi = np.fft.ifft(p)
     return f[:x.size/2], np.real(pi)[:x.size/2]/np.sum(xp**2)
 
+def lag1_ar(data, window=2048, lag=1) :
+    """
+    data:  1D array, the whole data
+    Compute the autocorrelation of the signal by defination
+    https://www.packtpub.com/mapt/book/big_data_and_business_intelligence/9781783553358/7/ch07lvl1sec75/autocorrelation
+    return:
+    the alg1 correlation coefficient given the lag and window size"""
+    lag_1 = []
+    for ii in range(data.size-window-lag):
+        ar1 = np.corrcoef(np.array([data[ii:window+ii], data[ii+lag:window+ii+lag]]))
+        lag_1.append(ar1[0, 1])
+    return lag_1
 
+def find_files(directory, pattern='D*.csv', withlabel=True):
+    '''fine all the files in one directory and assign '1'/'0' to F or N files'''
+    files = []
+    for root, dirnames, filenames in os.walk(directory):
+        for filename in fnmatch.filter(filenames, pattern):
+            if withlabel:
+                if 'Data_F' in filename:
+                    label = '1'
+                elif 'Data_N' in filename:
+                    label = '0'
+                files.append((os.path.join(root, filename), label))
+            else:  # only get names
+                files.append(os.path.join(root, filename))
+    
+    return files 
+
+
+    
 def read_data(filename ):
     reader = csv.reader(codecs.open(filename, 'rb', 'utf-8'))
     x_data, y_data = np.array([]), np.array([])
@@ -130,10 +160,31 @@ def get_features(data, fs=512):
     hurst= pyeeg.hurst(data)
 
     return
-##data_dir = "data/test_files/one"
-##files = func.find_files(data_dir, withlabel=False)
-for ind in range(21, 22):
-    files = 'results/whole_ds_8_DilatedCNN/cpu-batch20/2018-04-27T11-42-06/DilatedCNN_loss.csv'
+
+
+    
+data_dir = "data/test_files"
+files = func.find_files(data_dir, withlabel=False)
+plt.figure()
+window = 1024
+lag = 1
+for window in range(1024, 5121, 512):
+    for lag in range(1, 52, 2):
+        for ind, filename in enumerate(files):
+            print filename
+            data_x, data_y = read_data(filename)
+            corr = lag1_ar(data_x, window=window, lag=lag)
+            if "_F_" in filename:
+                color = "b"
+            else:
+                color= 'c'
+            plt.plot(corr, color=color, label='{}_ind{}'.format(filename[21:23], ind))
+        plt.title("AR(1)")
+        plt.legend(loc="best")
+        plt.xlabel("time step/ win={}, lag={}".format(window, lag))
+        plt.savefig("data/test_files/AR1_win{}_lag{}".format(window, lag))
+        plt.close()
+
     ##for filename in files:
         ##print filename
     #x_data1, y_data1 = read_data(files[0])
@@ -148,23 +199,5 @@ for ind in range(21, 22):
     ##plt.show()
     #plt.savefig(  files[0][0:-4] +"compare_F_NF_linear.png")
     #plt.close()
-    reader = csv.reader(codecs.open(files, 'rb', 'utf-8'))
-    batchNo, train_loss, train_acc, test_acc = np.array([]), np.array([]), np.array([]), np.array([])
-    for ind, row in enumerate(reader):
-        ipdb.set_trace()
-        No, loss, tracc, teacc = np.array(row).astype(np.float)
-        batchNo = np.append(batchNo, No)
-        train_loss = np.append(train_loss, loss)
-        train_acc = np.append(train_acc, tracc)
-        test_acc = np.append(test_acc, teacc)
-    batchNo, train_loss, train_acc, test_acc = batchNo.astype(np.int), train_loss.astype(np.float32), train_acc.astype(np.float32), test_acc.astype(np.float32)
-    plt.figure()
-    plt.plot(batchNo, train_loss, 'royalblue', label='train_loss')
-    plt.xlabel("training batches / 20")
-    plt.figure()
-    plt.plot(batchNo,  train_acc, 'royalblue', label='train_acc')
-    plt.plot(batchNo,  test_acc, 'royalblue', label='test_acc')
-    plt.xlabel("training batches / 20")
-    plt.legend()
-    plt.show()
+
 

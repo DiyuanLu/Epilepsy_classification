@@ -1,7 +1,7 @@
  ### use basic network to do classification
 import numpy as np
-#import matplotlib
-#matplotlib.use('Agg')
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 import tensorflow as tf
 import datetime
@@ -21,12 +21,12 @@ data_dir_test = "data/npy_data/testF751testN1501_ori_norm_zscore.npz"
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 200
 save_every = 100
-test_every = 10
+test_every = 20
 smooth_win_len = 20
 seq_len = 10240  #1280   ##
 height = seq_len
 width = 2   ### data width
-num_seg = 5   ## number of shorter segments you want to divide the original long sequence with a sliding window 
+num_seg = 10   ## number of shorter segments you want to divide the original long sequence with a sliding window 
 ifnorm = True
 batch_size = 30 # old: 16     20has a very good result
 num_classes = 2
@@ -34,8 +34,8 @@ epochs = 200
 total_batches =  epochs * 3000 // batch_size + 1 #5001               #
 num_classes = 2
 pattern='Data*.csv'
-version = 'whole_{}_Atrous_CNN'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTMDilatedCNN
-results_dir= "results/" + version + '/cpu-batch{}/ori_' .format(batch_size)+ datetime
+version = 'whole_{}_CNN'.format(pattern[0:4])                    #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
+results_dir= "results/" + version + '/cpu-batch{}/ori_2resiblock' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
 ifslide = True
 if ifslide:   ### use a 5s window slide over the 20s recording and do classification on segments, and then do a average vote
@@ -72,11 +72,11 @@ def train(x):
     ################# Constructing the network ###########################
     ##outputs = mod.fc_net(x, hid_dims=[500, 300], num_classes = num_classes)   ##
     ##outputs = mod.resi_net(x, hid_dims=[500, 300], num_classes = num_classes)  ## ok very sfast
-    outputs = mod.CNN(x, num_filters=[16, 32, 64], num_block=4, seq_len=height, width=width, num_classes = num_classes)    ## ok
+    outputs = mod.CNN(x, num_filters=[16, 32, 64], num_block=2, seq_len=height, width=width, num_classes = num_classes)    ## ok
     ##outputs = mod.DeepConvLSTM(x, num_filters=[32, 64], filter_size=5, num_lstm=128, seq_len=height, width=width, num_classes = num_classes)  ## ok
     ##outputs = mod.RNN(x, num_lstm=32, seq_len=height, width=width, num_classes = num_classes)   ##ok
     #outputs = mod.Dilated_CNN(x, num_filters=16, seq_len=seq_len, width=width, num_classes = num_classes)
-    #outputs = mod.Atrous_CNN(x, num_filters_cnn=[4, 8, 16, 32], dilation_rate=[4, 8, 16], kernel_size = [10, 1], seq_len=height, width=width, num_classes = 2)
+    #outputs = mod.Atrous_CNN(x, num_filters_cnn=[4, 8, 16], dilation_rate=[4, 8, 16], kernel_size = [10, 1], seq_len=height, width=width, num_classes = 2)
     
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")

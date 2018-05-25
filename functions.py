@@ -253,7 +253,7 @@ def sliding_window(data_x, data_y, num_seg=5, window=128, stride=64):
     assert len(data_x.shape) == 3
     expand_data = []
     for ii in range(data_x.shape[0]):
-        num_seg = (data_x.shape[1] - window) // stride + 1
+        num_seg = (data_x.shape[1] - window) // stride
         shape = (num_seg, window, data_x.shape[-1])      ## done change the num_seq
         strides = (data_x.itemsize*stride*data_x.shape[-1], data_x.itemsize*data_x.shape[-1], data_x.itemsize)
         expand_x = np.lib.stride_tricks.as_strided(data_x[ii, :, :], shape=shape, strides=strides)
@@ -261,8 +261,62 @@ def sliding_window(data_x, data_y, num_seg=5, window=128, stride=64):
     expand_y = np.repeat(data_y,  num_seg, axis=0).reshape(data_y.shape[0], num_seg, data_y.shape[1]).reshape(-1, data_y.shape[1])
     return np.array(expand_data).reshape(-1, window, data_x.shape[-1]), expand_y
 
-#def normalize_data(data):
+def lag1_ar(data, window=1024, lag=1) :
+    """
+    data:  1D array, the whole data    https://www.packtpub.com/mapt/book/big_data_and_business_intelligence/9781783553358/7/ch07lvl1sec75/autocorrelation
+    return:
+    the alg1 correlation coefficient given the lag and window size"""
+    lag_1 = []
+    for ii in range(data.size-window):
+        ar1 = np.corrcoef(np.array([data[ii:window+ii], data[ii+lag:window+ii+lag]]))
+        lag_1.append(ar1[0, 1])
+    return lag_1
 
+def filter_loss(data, threshold = 20):
+    ''' get all the data loss(value doesn't change from previous time. ')
+    param:
+    problem: there are a lot places where only 1/2 data is repeated. they could be good just discard those repeated values
+        '''
+    error = data[0:-1] - data[1:]  
+    indices = np.where(error==0)        ### get the indices of the start of data loss
+    record_intervals = indice[1:] - indice[0:-1]   ### get record data points interval between two consecutive data loss points. if it's > threshold, then it can be used as good data recording
+    start_meaning_record = np.where(record_intervals >threshold)   ### pionts back to between which 
+              #####data loss there is good recording. from data[start_meaning_record] lasts for record_intervals
+    start_meaning_record = start_meaning_record[0]
+    ### get the starting point of a good recording segment and duration of it
+    ### start index of a long/good recording
+    start = indice[start_meaning_record][0]+1
+    duration = record_intervals[start_meaning_record[0]]   ### the duration 
+    data_seg = data[start : start+ duration]    ### finally get the data
+    data_segs.append(data_seg)
+    return data_segs
+
+def filter_loss_new(data, thre):
+    '''#### start new filter. 
+    ### 1. discard repeated data if the number of repeatation is below a threshold(10). 
+        ### it shouldn't make a hug difference since the sampling reate is 512Hz
+    ### 2. then segement the recording with long data loss (if the data loss over a threshold, split the data into segments)
+    ### 3. discard short recordings
+    ### 4. leftover segments with no data repeatation and long enough'''
+    
+    error = data[0:-1] - data[1:]  
+    non_zero_error_ind = np.where(error!=0)[0]   ### those indices where there is no data loss
+
+    loss_intervals = non_zero_error_ind[1:] - non_zero_error_ind[0:-1]
+
+    # ## if smaller than threshold, it means the data loss is short and make sense to squize out the loss points
+    long_loss_interval_start = np.where(loss_intervals>threshold)[0]   ##get where there are long(>threshold) data loss
+
+    accepted_segs_ind = np.split( non_zero_error_ind, long_loss_interval_start+1)
+
+    data_segs = []
+    for ii, ind_seg in enumerate(accepted_segs_ind):
+        if ind_seg.size > 100:
+            data_seg = data[ind_seg]  ### get segments between long data loss
+            data_segs.append(data_seg)
+        
+    return np.array(data_segs)
+    
 ###################### plots ##########################
 def PCA_plot(pca_fit):
     traces = []
