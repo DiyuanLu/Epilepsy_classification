@@ -12,7 +12,7 @@ import ipdb
 import os
 import functions as func
 import pyeeg
-
+import pandas as pd
 
 def autocorrelation(x) :
     """
@@ -57,15 +57,18 @@ def find_files(directory, pattern='D*.csv', withlabel=True):
 
     
 def read_data(filename ):
-    reader = csv.reader(codecs.open(filename, 'rb', 'utf-8'))
-    x_data, y_data = np.array([]), np.array([])
-    for ind, row in enumerate(reader):
-        x, y = row
-        x_data = np.append(x_data, x)
-        y_data = np.append(y_data, y)
-    x_data = x_data.astype(np.float32)
-    y_data = y_data.astype(np.float32)
-    return x_data, y_data
+    def read_data(filename, header=None, ifnorm=True ):
+    '''read data from .csv
+    return:
+        data: 2d array [seq_len, channel]'''
+
+    data = pd.read_csv(filename, header=header, nrows=None)
+    data = data.values   ### get data without row_index
+    if ifnorm:   ### 2 * 10240  normalize the data into [0.0, 1.0]]
+        data_norm = zscore(data)
+        data = data_norm
+    data = np.squeeze(data)   ## shape from [1, seq_len] --> [seq_len,]
+    return data
 
 def get_var(data):
     variance = np.var(data, 1)
