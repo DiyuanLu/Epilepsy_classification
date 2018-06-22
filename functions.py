@@ -81,17 +81,22 @@ def multiprocessing_func(data_dir):
 
 ###################### Data munipulation##########################
 
-def read_data(filename, header=None, ifnorm=True ):
+def read_data(filename, header=None, ifnorm=True, start=0, width=2 ):
     '''read data from .csv
+    Param:
+        filename: string e.g. 'data/Data_F_Ind0001.csv'
+        ifnorm: boolean, 1 zscore normalization
+        start: with filter augmented data, start index of the column indicate which group of data to use
+        width: how many columns of data to use, times of 2
     return:
         data: 2d array [seq_len, channel]'''
 
     data = pd.read_csv(filename, header=header, nrows=None)
-    data = data.values   ### get data without row_index
+    data = data.values[:, start:start+width]   ### get data without row_index
     if ifnorm:   ### 2 * 10240  normalize the data into [0.0, 1.0]]
         data_norm = zscore(data)
         data = data_norm
-    data = np.squeeze(data)   ## shape from [1, seq_len] --> [seq_len,]
+    #data = np.squeeze(data)   ## shape from [1, seq_len] --> [seq_len,]
     return data
 
 def augment_data_with_ar1(filename):
@@ -279,7 +284,7 @@ def slide_and_segment(data_x, num_seg=5, window=128, stride=64):
     assert len(data_x.shape) == 3
         
     num_seg = (data_x.shape[1] - np.int(window)) // stride + 1
-    expand_data = np.zeros((data_x.shape[0], num_seg, window, 2))
+    expand_data = np.zeros((data_x.shape[0], num_seg, window, data_x.shape[-1]))
     # ipdb.set_trace()
     for ii in range(data_x.shape[0]):
         
@@ -626,19 +631,14 @@ def plot_BB_training_examples(samples, true_labels, save_name='results/'):
     
     for ii in range(6):
         plt.figure()
-        ax1 = plt.subplot(2, 1, 1)
-        plt.plot(samples[ii, :, 0], label="data_1")
-        plt.ylabel("Voltage (mV)")
-        plt.xlabel("data samples, label={}".format(true_labels[ii]))
-        plt.legend()
-        plt.xlim([0, samples[ii, :, 0].size])
-
-        ax1 = plt.subplot(2, 1, 2)
-        plt.plot(samples[ii, :, 1], label="data_2")
-        plt.ylabel("Voltage (mV)")
-        plt.xlabel("data samples, label={}".format(true_labels[ii]))
-        plt.xlim([0, samples[ii, :, 1].size])
-        plt.legend()
+        for ind in range(samples[ii, :, :].shape[-1]):
+        
+            ax1 = plt.subplot(samples[ii, :, :].shape[-1], 1, ind+1)
+            plt.plot(samples[ii, :, ind], label="data_{}".format(ind+1))
+            plt.ylabel("Voltage (mV)")
+            plt.xlabel("data samples, label={}".format(true_labels[ii]))
+            plt.legend()
+            plt.xlim([0, samples[ii, :, 0].size])
         plt.tight_layout()
         plt.savefig(save_name + "vis_train_data{}.png".format(ii), format="png")
         plt.close()

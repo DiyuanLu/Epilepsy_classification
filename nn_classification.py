@@ -11,36 +11,38 @@ import functions as func
 import modules as mod
 from sklearn.model_selection import KFold, StratifiedKFold
 import ipdb
+from scipy.stats import ttest_ind
 
 kfolds = 10
 skf = StratifiedKFold(n_splits=kfolds, shuffle=True)   ## keep the class ratio balance in each fold
 
 
-data_dir = "data/train_data"
+data_dir = "data/train_data/filter"
   #ori_50train20test.npz"###ori_aug2_20tes
 
 #ipdb.set_trace()
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-plot_every = 200
+plot_every = 100
 save_every = 200
 test_every = 10
 smooth_win_len = 20
 seq_len = 10240  #1280   ## 
 height = seq_len
-width = 2  # with augmentation 2   ### data width
-num_seg = 5   ## number of shorter segments you want to divide the original long sequence with a sliding window
+width = 8  # with augmentation 2   ### data width
+start = 0
+num_seg = 10   ## number of shorter segments you want to divide the original long sequence with a sliding window
 ifnorm = True
 ifslide = True  ##False    #   
-majority_vote = True   #False
+majority_vote = True   #False   ##
 batch_size = 30  # old: 16     20has a very good result
 num_classes = 2
 epochs = 50
 total_batches =  epochs * 6000 // batch_size + 1 #5001               #
 
 
-pattern='Data*.csv'
+pattern='filter*.csv'
 version = 'whole_{}_CNN'.format(pattern[0:4])#    DeepConvLSTM   Atrous_CNN     PyramidPoolingConv         #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
-results_dir= "results/" + version + '/cpu-batch{}/2block-' .format(batch_size)+ datetime#cnv4_lstm64test
+results_dir= "results/" + version + '/cpu-batch{}/slide10-vote-Adam-filter0-1-2-3-' .format(batch_size)+ datetime#cnv4_lstm64test
 logdir = results_dir+ "/model"
 
 if ifslide:   ### use a 5s window slide over the 20s recording and do classification on segments, and then do a average vote
@@ -102,14 +104,14 @@ def train(x):
     ################# Constructing the network ###########################
     #outputs = mod.fc_net(x, hid_dims=[500, 300, 100], num_classes = num_classes)   ##
     ##outputs = mod.resi_net(x, hid_dims=[500, 300], num_classes = num_classes)  ## ok very sfast
-    outputs = mod.CNN(x, num_filters=[2, 4, 8, 16], num_block=2, filter_size=9, seq_len=height, width=width, num_classes = num_classes)    ## ok
-    #outputs = mod.CNN_new(x, num_filters=[4, 8, 16, 32], num_block=3, num_seg=num_seg, seq_len=height, width=width, num_classes = num_classes)    ## ok
+    #outputs = mod.CNN(x, num_filters=[2, 4, 8, 16], num_block=2, filter_size=[9, 2], seq_len=height, width=width, num_classes = num_classes)    ## ok
+    #outputs = mod.CNN_new(x, num_filters=[4, 8, 16, 32], num_block=2, num_seg=num_seg, seq_len=height, width=width, num_classes = num_classes)    ## ok
     #outputs = mod.DeepConvLSTM(x, num_filters=[8, 16, 32], filter_size=9, num_lstm=64, seq_len=height, width=width, num_classes = num_classes)  ## ok
-    #outputs = mod.RNN(x, num_lstm=128, seq_len=height, width=width, group_size=16, num_classes = num_classes)   ##ok
+    #outputs = mod.RNN(x, num_lstm=128, seq_len=height, width=width, group_size=32, num_classes = num_classes)   ##ok
     #outputs = mod.Dilated_CNN(x, num_filters=16, seq_len=seq_len, width=width, num_classes = num_classes)
     #outputs = mod.Atrous_CNN(x, num_filters_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 16], kernel_size = [5, 1], seq_len=height, width=width, num_classes = 2)
     #outputs = mod.PyramidPoolingConv(x, num_filters=[2, 4, 8, 16, 32], filter_size=7, dilation_rate=[2, 8, 16, 32], seq_len=height, width=width, num_seg=num_seg, num_classes=num_classes)
-
+    outputs = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, num_seg=num_seg, num_classes=num_classes)
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
@@ -128,8 +130,8 @@ def train(x):
         tf.summary.scalar('loss', cost)
         tf.summary.scalar('accuracy', accuracy)
 
-    #optimizer = tf.train.AdamOptimizer(0.001).minimize(cost)###,
-    optimizer = tf.train.RMSPropOptimizer(0.01).minimize(cost)
+    optimizer = tf.train.AdamOptimizer(0.001).minimize(cost)###,
+    #optimizer = tf.train.RMSPropOptimizer(0.01).minimize(cost)   ### laerning rate 0.01 works
     #optimizer = tf.train.AdagradOptimizer(0.001).minimize(cost)
     #################### Set up logging for TensorBoard.
     writer = tf.summary.FileWriter(logdir)
@@ -147,6 +149,7 @@ def train(x):
         sess.run(tf.global_variables_initializer())
         acc_total_train = np.array([])
         acc_total_test = np.array([])
+        loss_total_test = np.array([])
         loss_total_train = np.array([])
         # track the outlier files
         if not os.path.exists(logdir):
@@ -163,19 +166,20 @@ def train(x):
             for ind in range(len(filename_train)):
                 # ipdb.set_trace()
                 # print("filename_train[ind]", filename_train[ind])
-                data = func.read_data(filename_train[ind],  header=None, ifnorm=False)
+                data = func.read_data(filename_train[ind],  header=0, ifnorm=False, start=start, width=width)
                 data_train[ind, :, :] = data
             labels_train_hot =  np.eye((num_classes))[labels_train.astype(int)]   # get one-hot lable
             # ipdb.set_trace()
-            if batch == 0:
+            #if batch == 0:
+                ##ipdb.set_trace()
+                #func.plot_BB_training_examples(data_train, labels_train, save_name=save_name)
                 #ipdb.set_trace()
-                func.plot_BB_training_examples(data_train, labels_train, save_name=save_name)
 
             # ipdb.set_trace()
             if ifslide:
                 data_slide = func.slide_and_segment(data_train, num_seg, window=seq_len//num_seg, stride=seq_len//num_seg )## 5s segment with 1s overlap
                 data_train = data_slide
-                #labels_train_hot = np.repeat(labels_train_hot,  num_seg, axis=0).reshape(-1, labels_train_hot.shape[1])
+                labels_train_hot = np.repeat(labels_train_hot,  num_seg, axis=0).reshape(-1, labels_train_hot.shape[1])
 
             _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: data_train, y: labels_train_hot})# , options=options, run_metadata=run_metadata We collect profiling infos for each step.
             writer.add_summary(summary, batch)
@@ -185,10 +189,11 @@ def train(x):
                 # track training
                 acc_total_train = np.append(acc_total_train, acc)
                 loss_total_train = np.append(loss_total_train, c)
+                
                 data_test_tot = np.zeros((num_test, seq_len, width))
                 # for ii in range(labels_test.shape[0]):   ## test with 100 per time and then average
                 for ind, filename in enumerate( files_test):
-                    data = func.read_data(filename, header=None, ifnorm=False)
+                    data = func.read_data(filename, header=0, ifnorm=False, start=start, width=width)
                     data_test_tot[ind, :, :] = data
                 labels_test_hot =  np.eye((num_classes))[labels_test.astype(int)]
                 
@@ -197,15 +202,16 @@ def train(x):
                     if ifslide:
                         data_slide = func.slide_and_segment(data_test_tot[jj*50: (jj+1)*50, :, :], num_seg, window=seq_len//num_seg, stride=seq_len//num_seg )## 5s segment with 1s overlap
                         data_test_batch = data_slide
-                        #labels_test_batch = np.repeat(labels_test_hot,  num_seg, axis=0).reshape(-1, labels_test_hot.shape[1])
-                        labels_test_batch = labels_test_hot[jj*50: (jj+1)*50, :]
+                        labels_test_batch = np.repeat(labels_test_hot[jj*50: (jj+1)*50, :],  num_seg, axis=0).reshape(-1, labels_test_hot.shape[1])
+                        #labels_test_batch = labels_test_hot[jj*50: (jj+1)*50, :]
                     else:
                         data_test_batch, labels_test_batch  = data_test_tot[jj*50: (jj+1)*50, :, :], labels_test_hot[jj*50: (jj+1)*50, :]
                     
-                    test_temp, test_pred = sess.run([accuracy, outputs], {x: data_test_batch, y: labels_test_batch})   
+                    test_temp, test_pred, test_loss = sess.run([accuracy, outputs, cost], {x: data_test_batch, y: labels_test_batch})   
                     test_acc_batch += test_temp
                 test_accuracy = test_acc_batch / (num_test // 50)
                 acc_total_test = np.append(acc_total_test, test_accuracy)
+                loss_total_test = np.append(loss_total_test, test_loss)
                 print("batch:",batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', test_accuracy)
                 ########################################################
 
@@ -216,7 +222,7 @@ def train(x):
 
                 func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=True, window_len=smooth_win_len, xlabel= 'training batches / {}'.format( test_every), ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_batch_{}".format(batch))
 
-                func.plot_smooth_shadow_curve([loss_total_train], window_len=smooth_win_len, ifsmooth=True, colors=['c'], xlabel= 'training batches / {}'.format( test_every), ylabel="loss", title='Loss in training',labels=['training loss'], save_name=results_dir+ "/training_loss_batch_{}".format(batch))
+                func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=True, colors=['c', 'b'], xlabel= 'training batches / {}'.format( test_every), ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_batch_{}".format(batch))
 
                 func.save_data((acc_total_train, loss_total_train, acc_total_test), header='accuracy_train,loss_train,accuracy_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
 

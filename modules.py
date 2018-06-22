@@ -74,11 +74,11 @@ def resi_net(x, hid_dims=[500, 300], num_classes = 2):
         return outputs
 
 
-def resBlock_CNN(inputs, filter_size=9, num_filters=[4, 8, 16], stride=3, No=0):
+def resBlock_CNN(x, filter_size=9, num_filters=[4, 8, 16], stride=3, No=0):
     '''Construct residual blocks given the num of filter to use within the block
     reference:
     https://chatbotslife.com/resnets-highwaynets-and-densenets-oh-my-9bb15918ee32'''
-    net = inputs
+    net = x
     for num_outputs in num_filters:
         net = tf.layers.batch_normalization(net)
         net = tf.nn.relu(net)
@@ -92,8 +92,8 @@ def resBlock_CNN(inputs, filter_size=9, num_filters=[4, 8, 16], stride=3, No=0):
     output = inputs + net
     return output
     
-def Highway_Block_CNN(inputs, filter_size=9, num_filters=[4, 8, 16], No=0):
-    net = inputs
+def Highway_Block_CNN(x, filter_size=9, num_filters=[4, 8, 16], No=0):
+    net = x
     with tf.variable_scope("highway_block"+str(No)):
         H = tf.layers.conv2d(
                                 inputs = net,
@@ -109,7 +109,7 @@ def Highway_Block_CNN(inputs, filter_size=9, num_filters=[4, 8, 16], No=0):
         return output
 
 
-def CNN(x, num_filters=[8, 8, 8], num_block=3, filter_size=9, seq_len=10240, width=1, num_classes = 2):
+def CNN(x, num_filters=[8, 8, 8], num_block=3, filter_size=[7, 2], seq_len=10240, width=1, num_classes = 2):
     '''Perform convolution on 1d data
     Param:
         x: input data, 3D,array, shape=[batch_size, seq_len, width]
@@ -133,7 +133,7 @@ def CNN(x, num_filters=[8, 8, 8], num_block=3, filter_size=9, seq_len=10240, wid
                 net = tf.layers.conv2d(
                                 inputs = net,
                                 filters = num_outputs,
-                                kernel_size = [filter_size, 1],   ### using a  wider kernel size helps
+                                kernel_size = filter_size,   ### using a  wider kernel size helps
                                 strides = (2, 1),
                                 padding = 'same',
                                 activation=None, 
@@ -153,7 +153,7 @@ def CNN(x, num_filters=[8, 8, 8], num_block=3, filter_size=9, seq_len=10240, wid
     net = tf.layers.batch_normalization(net, center = True, scale = True)
     
     ##### Logits layer
-    net = tf.reshape(net, [-1,  net.shape[1]*net.shape[2]*net.shape[3]*(10240//seq_len)])   ### get short segments together
+    net = tf.reshape(net, [-1,  net.shape[1]*net.shape[2]*net.shape[3]])   ### *(10240//seq_len)get short segments together
     net = tf.layers.dense(inputs=net, units=200, activation=tf.nn.relu)
     net = tf.layers.batch_normalization(net, center = True, scale = True)
     net = tf.layers.dense(inputs=net, units=50, activation=tf.nn.relu)
@@ -167,7 +167,7 @@ def CNN(x, num_filters=[8, 8, 8], num_block=3, filter_size=9, seq_len=10240, wid
 
 
 
-def DeepConvLSTM(x, num_filters=[8, 16, 32, 64], filter_size=9, num_lstm=64, seq_len=10240, width=2, num_classes = 2):
+def DeepConvLSTM(x, num_filters=[8, 16, 32, 64], filter_size=9, num_lstm=64, group_size=32, seq_len=10240, width=2, num_classes = 2):
     '''work is inspired by
     https://github.com/sussexwearlab/DeepConvLSTM/blob/master/DeepConvLSTM.ipynb
     in-shape: (BATCH_SIZE, 1, SLIDING_WINDOW_LENGTH, NB_SENSOR_CHANNELS), if no sliding, then it's the length of the sequence
@@ -200,7 +200,7 @@ def DeepConvLSTM(x, num_filters=[8, 16, 32, 64], filter_size=9, num_lstm=64, seq
         ### prepare input data for rnn requirements. current shape=[None, seq_len, num_filters]
         ### Required shape: 'timesteps' tensors list of shape (batch_size, n_input)
         #ipdb.set_trace()
-        net = tf.reshape(net, [-1, seq_len//16, width*num_filters[-1]*16])
+        net = tf.reshape(net, [-1, seq_len//group_size, width*num_filters[-1]*group_size])   ## group these data points together 
         print("net ", net.shape)
         # Unstack to get a list of 'timesteps' tensors of shape (batch_size, n_input)
         net = tf.unstack(net, axis=1)
@@ -484,8 +484,7 @@ def PyramidPoolingConv(x, num_filters=[2, 4, 8, 16, 32, 64, 128], filter_size=5,
         print("last net", net.shape)
         pyramid_feature.append(net)
     
-    net = tf.concat(([pyramid_feature[i] for i in range( len(pyramid_feature))]), axis=3,
-                                name="concat")
+    net = tf.concat(([pyramid_feature[i] for i in range( len(pyramid_feature))]), axis=3,name="concat")
     print("pyrimid features", net.shape)
     net = tf.layers.conv2d(
                              inputs = net,
@@ -502,4 +501,64 @@ def PyramidPoolingConv(x, num_filters=[2, 4, 8, 16, 32, 64, 128], filter_size=5,
 
     ## Logits layer
     logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
+    return logits
+    
+def Inception(x, num_filters=[16, 32, 64, 128], filter_size=[5, 9],num_block=2, seq_len=10240, width=2, num_seg=5, num_classes=2):
+    '''https://hacktilldawn.com/2016/09/25/inception-modules-explained-and-implemented/
+    '''
+    inputs = tf.reshape(x,  [-1, seq_len, width, 1])
+    filter_concat = []
+    net_1x1 = tf.layers.conv2d(
+                            inputs = inputs,
+                            filters = 8, 
+                            kernel_size = [1, 1],
+                            padding = 'same',
+                            activation = tf.nn.relu)
+    filter_concat.append(net_1x1)
+    ## 5*1 conv level
+    conv1x1_filters = [8, 4]
+    convbig_filters = [16, 8]
+    for ind, num_output in enumerate(filter_size):
+        net = tf.layers.conv2d(
+                            inputs = inputs,
+                            filters = conv1x1_filters[ind], 
+                            kernel_size = [1, 1],
+                            padding = 'same',
+                            activation = tf.nn.relu)
+        print("net1x1 in reduce", net.shape)
+        net = tf.layers.conv2d(
+                            inputs = net,
+                            filters = convbig_filters[ind], 
+                            kernel_size = [num_filters[ind], num_filters[ind]],   ### seq: 1
+                            padding = 'same',
+                            activation = tf.nn.relu)
+        print("net{}x1 in reduce".format(num_filters[ind]), net.shape)
+        filter_concat.append(net)
+
+    ## pooling + 1 conv
+    net = tf.layers.max_pooling2d(
+                        inputs = inputs, 
+                        pool_size=[3, 3], 
+                        padding = 'same',
+                        strides=[1, 1])
+    print("net reduce pooling", net.shape)
+    net = tf.layers.conv2d(
+                        inputs = net,
+                        filters = 8, 
+                        kernel_size = [1, 1],
+                        padding = 'same',
+                        activation = tf.nn.relu)
+    filter_concat.append(net)
+    inception = tf.nn.relu(tf.concat(([filter_concat[i] for i in range( len(filter_concat))]), axis=3,name="concat"))
+    print("inception concat", inception.shape)
+    
+    net = tf.reshape(inception, [-1, inception.shape[1]*inception.shape[2]*inception.shape[3]])
+    print("flatten net ", net.shape)
+    net = tf.layers.dense(inputs=net, units=700, activation=tf.nn.relu)
+    net = tf.layers.batch_normalization(net)
+    #net = tf.layers.dense(inputs=net, units=100, activation=tf.nn.relu)
+    #net = tf.layers.batch_normalization(net)
+    ## Logits layer
+    logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
+    
     return logits

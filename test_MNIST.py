@@ -16,6 +16,22 @@ from tensorflow.examples.tutorials.mnist import input_data    # DOWNLOAD DATA
 
 mnist = input_data.read_data_sets("data/MNIST_data/",  one_hot=True)
 
+
+def getActivations(layer,stimuli):
+    units = sess.run(layer,feed_dict={x:np.reshape(stimuli,[1,784],order='F'),keep_prob:1.0})
+    plotNNFilter(units)
+
+def plotNNFilter(units):
+    filters = units.shape[3]
+    plt.figure(1, figsize=(20,20))
+    n_columns = 6
+    n_rows = math.ceil(filters / n_columns) + 1
+    for i in range(filters):
+        plt.subplot(n_rows, n_columns, i+1)
+        plt.title('Filter ' + str(i))
+        plt.imshow(units[0,:,:,i], interpolation="nearest", cmap="gray")
+
+        
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 500
 save_every = 500
@@ -25,7 +41,7 @@ num_classes = 10
 epochs = 200
 total_batches =  epochs * 3000 // batch_size + 1 #5001               #
 
-pattern='ds_8*.csv'
+#pattern='ds_8*.csv'
 version = 'whole_MNIST_RNN'              #DilatedCNNDeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
 results_dir= "results/2-MNIST_checks/" + version + '/batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
@@ -33,11 +49,13 @@ if not os.path.exists(logdir):
     os.makedirs(logdir)
 if not os.path.exists(results_dir):
     os.makedirs(results_dir)
-print results_dir
+print(results_dir)
 
-
+'''FNN data shape'''
 x = tf.placeholder("float32", [None, height*width])  #20s recording width of each recording is 1, there are 2 channels
-y = tf.placeholder("float32")
+y = tf.placeholder("float32", [None, num_classes])
+
+
 
 ### construct the network
 def train(x):
@@ -49,14 +67,15 @@ def train(x):
     #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64], filter_size=5, num_lstm=128, seq_len=height, width=width, num_classes = num_classes)  ## ok
     #outputs = mod.RNN(x, num_lstm=64, seq_len=height, width=width, num_classes = num_classes)   ##ok
     #outputs = mod.Dilated_CNN(x, num_filters=8, dilation_rate=[2, 8, 16], kernel_size = [3, 3], pool_size=[2, 2], pool_strides=[2, 2], seq_len=height, width=width, num_classes = num_classes) ##ok
-    outputs = mod.Atrous_CNN(x, num_filters_cnn=[4, 8, 16], dilation_rate=[2, 4, 8, 16], kernel_size = [10, 1], seq_len=height, width=width, num_classes = 10) ##ok
+    #outputs = mod.Atrous_CNN(x, num_filters_cnn=[4, 8, 16], dilation_rate=[2, 4, 8, 16], kernel_size = [10, 1], seq_len=height, width=width, num_classes = 10) ##ok
+    outputs = mod.Inception(x, filter_size=[3, 5],num_block=2, seq_len=height, width=width, num_classes=num_classes)
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
         predictions = tf.argmax(outputs, 1)
         correct = tf.equal(tf.argmax(outputs, 1), tf.argmax(y, 1), name="correct")
         accuracy = tf.reduce_mean(tf.cast(correct, "float32"), name="accuracy")
-        
+
 
         test_acc = tf.Variable(0.0)
         tf.summary.scalar('loss', cost)
@@ -65,7 +84,7 @@ def train(x):
 
     optimizer = tf.train.AdamOptimizer(0.001).minimize(cost, aggregation_method=tf.AggregationMethod.EXPERIMENTAL_ACCUMULATE_N)
     #optimizer = tf.train.GradientDescentOptimizer(0.001).minimize(cost)
-    
+
     #################### Set up logging for TensorBoard.
     writer = tf.summary.FileWriter(logdir)
     writer.add_graph(tf.get_default_graph())
@@ -77,7 +96,7 @@ def train(x):
          #profiler = tf.profiler.Profiler(sess.graph)
         options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
         run_metadata = tf.RunMetadata()
-        
+
         np.random.seed(1998745)
         sess.run(tf.global_variables_initializer())
         acc_total_train = np.array([])
@@ -87,25 +106,25 @@ def train(x):
             save_name = results_dir + '/' + "_step{}_".format( batch)
             ########## MNIST
             batch_data, batch_labels = mnist.train.next_batch(batch_size)
-
+            
             _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels}, options=options, run_metadata=run_metadata)
-           
+
             if batch % 10 == 0:
-                print "batch",batch, 'loss', c, 'accuracy', acc
+                print( "batch",batch, 'loss', c, 'accuracy', acc)
             writer.add_summary(summary, batch)
             ####### # Create the Timeline object, and write it to a json file
             fetched_timeline = timeline.Timeline(run_metadata.step_stats)
             chrome_trace = fetched_timeline.generate_chrome_trace_format()
             with open(save_name + 'timeline_{}.json'.format(batch), 'w') as f:
                 f.write(chrome_trace)
-                
+
             if batch % 1 == 0:
                 # track training
                 acc_total_train = np.append(acc_total_train, acc)
                 loss_total_train = np.append(loss_total_train, c)
-               
+
                 test_data, test_labels = mnist.test.next_batch(batch_size)
-                test_temp = sess.run(accuracy, {x: test_data, y: test_labels})   # test_acc_sum, sensitivity_sum, specificity_sum, 
+                test_temp = sess.run(accuracy, {x: test_data, y: test_labels})   # test_acc_sum, sensitivity_sum, specificity_sum,
                 acc_total_test = np.append(acc_total_test, test_temp)
                 ########################################################
             if batch % save_every == 0:
@@ -114,7 +133,7 @@ def train(x):
             if batch % plot_every == 0 and batch >= plot_every:   #
 
                 func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], xlabel= 'training batches / {}'.format(batch_size), ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_batch_{}".format(batch))
-                
+
                 func.plot_smooth_shadow_curve([loss_total_train], colors=['c'], xlabel= 'training batches / {}'.format(batch_size), ylabel="loss", title='Loss in training',labels=['training loss'], save_name=results_dir+ "/training_loss_batch_{}".format(batch))
 
                 func.save_data((acc_total_train, loss_total_train, acc_total_test), header='accuracy_train,loss_train,accuracy_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
