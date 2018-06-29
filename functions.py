@@ -507,7 +507,7 @@ def plotdata(data, color='darkorchid', xlabel="training time", ylabel="loss", sa
     '''
     data: 1D array '''
     plt.figure()
-    plt.plot(data, color)
+    plt.plot(np.arange(data.size)/512.0, data, color)
     plt.xlabel(xlabel)
     plt.ylabel(ylabel)
     if ylabel == 'accuracy':
@@ -521,8 +521,8 @@ def plot_test_samples(samples, true_labels, pred_labels, save_name='results/'):
     plt.figure()
     for ii in range(20):
         ax1 = plt.subplot(5, 4, ii +1)
-        plt.plot(samples[ii, :, 0])
-        plt.xlim([0, 2048])
+        plt.plot(np.arange(samples[ii, :, 0])/ 512.0, samples[ii, :, 0])
+        plt.xlim([0, samples[ii, :, 0]/ 512.0])
         plt.xlabel("{}-{:10.4f}".format(true_labels[ii], np.max(pred_labels[ii, :])))
         #plt.setp(ax1.get_yticklabels(), visible = False)
         plt.title("True - Predict")
@@ -617,8 +617,8 @@ def plot_train_samples(samples, true_labels, save_name='results/'):
     plt.figure()
     for ii in range(20):
         ax1 = plt.subplot(5, 4, ii +1)
-        plt.plot(samples[ii, :, 0])
-        plt.xlim([0, 2048])
+        plt.plot(np.arange(samples[ii, :, 0])/ 512.0, samples[ii, :, 0])
+        plt.xlim([0, samples[ii, :, 0]/ 512.0])
         plt.xlabel("label: "+ np.str(true_labels[ii]))
         plt.ylabel("Voltage (mV)")
         #plt.setp(ax1.get_yticklabels(), visible = False)
@@ -634,15 +634,32 @@ def plot_BB_training_examples(samples, true_labels, save_name='results/'):
         for ind in range(samples[ii, :, :].shape[-1]):
         
             ax1 = plt.subplot(samples[ii, :, :].shape[-1], 1, ind+1)
-            plt.plot(samples[ii, :, ind], label="data_{}".format(ind+1))
+            plt.plot(np.arange(samples[ii, :, ind])/ 512.0, samples[ii, :, ind], label="data_{}".format(ind+1))
             plt.ylabel("Voltage (mV)")
             plt.xlabel("data samples, label={}".format(true_labels[ii]))
             plt.legend()
-            plt.xlim([0, samples[ii, :, 0].size])
+            plt.xlim([0, samples[ii, :, 0].size/ 512.0])
         plt.tight_layout()
         plt.savefig(save_name + "vis_train_data{}.png".format(ii), format="png")
         plt.close()
+
+def plotbhSNE(x_data, label, window=512, num_classes=2, title="t-SNE", save_name='/results'):
     
+    '''tSNE visualize the original setmented data
+    Param:
+        x_data: shape(batch, seq_len, width)''' #classify based on the activity, x_data = stateX
+    # perform t-SNE embedding--2D plot
+    vis_data = bh_sne(x_data, pca_d=3)  #steps*2
+    # plot the result
+    vis_x = vis_data[:, 0]
+    vis_y = vis_data[:, 1]
+    ##plot the result
+    plt.scatter(vis_x, vis_y, c=label, cmap=plt.cm.get_cmap("cool", num_classes))   ##
+    plt.title("t-SNE in orginal {}-long segments".format(window))
+    plt.colorbar(ticks=range(num_classes))
+    plt.clim(-0.5, num_classes-0.5)
+    plt.savefig(save_name+"t-SNE-{}.png".format(window), format='png')
+    plt.close()
     
 #def plotOnePair(data):
     #'''plot the original data-pair'''

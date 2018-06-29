@@ -12,12 +12,14 @@ import modules as mod
 from sklearn.model_selection import KFold, StratifiedKFold
 import ipdb
 from scipy.stats import ttest_ind
+#import cPickle as pickle
+import pickle
+
 
 kfolds = 10
 skf = StratifiedKFold(n_splits=kfolds, shuffle=True)   ## keep the class ratio balance in each fold
 
 
-data_dir = "data/train_data/filter"
   #ori_50train20test.npz"###ori_aug2_20tes
 
 #ipdb.set_trace()
@@ -28,21 +30,22 @@ test_every = 10
 smooth_win_len = 20
 seq_len = 10240  #1280   ## 
 height = seq_len
-width = 8  # with augmentation 2   ### data width
-start = 0
+width = 2  # with augmentation 2   ### data width
+start = 0        #'original,delta:1-4Hz,theta:4-8Hz,alpha:8-13Hz,beta:13-30Hz,gamma:30-70Hz'
 num_seg = 10   ## number of shorter segments you want to divide the original long sequence with a sliding window
 ifnorm = True
 ifslide = True  ##False    #   
 majority_vote = True   #False   ##
-batch_size = 30  # old: 16     20has a very good result
+batch_size = 64  # old: 16     20has a very good result
 num_classes = 2
 epochs = 50
 total_batches =  epochs * 6000 // batch_size + 1 #5001               #
-
-
-pattern='filter*.csv'
-version = 'whole_{}_CNN'.format(pattern[0:4])#    DeepConvLSTM   Atrous_CNN     PyramidPoolingConv         #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
-results_dir= "results/" + version + '/cpu-batch{}/slide10-vote-Adam-filter0-1-2-3-' .format(batch_size)+ datetime#cnv4_lstm64test
+header = None
+data_dir = "data/train_data"
+pattern='Data*.csv'
+data_version = 'Data'
+version = 'whole_{}_ResNet'.format(pattern[0:4])#    DeepConvLSTM   Atrous_CNN     PyramidPoolingConv         #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
+results_dir= "results/" + version + '/cpu-batch{}/slide10-vote-Adam-Data-'.format(batch_size)+ datetime#cnv4_lstm64test
 logdir = results_dir+ "/model"
 
 if ifslide:   ### use a 5s window slide over the 20s recording and do classification on segments, and then do a average vote
@@ -83,24 +86,62 @@ def plotNNFilter(units):
 def train(x):
 
     with tf.name_scope("Data"):
-        with tf.name_scope("Data"):
-            ### Get data. In each file, the data_len is different. But training, split them into 4s segments and do classification on the segements
-            files_wlabel = func.find_files(data_dir, pattern=pattern, withlabel=True)### traverse all the files in the dir, and divide into batches, from
-            #ipdb.set_trace()
-            print("files_wlabel", files_wlabel[0])
+        ### Get data. In each file, the data_len is different. But training, split them into 4s segments and do classification on the segements
+        files_wlabel = func.find_files(data_dir, pattern=pattern, withlabel=True)### traverse all the files in the dir, and divide into batches, from
+        #ipdb.set_trace()
+        print("files_wlabel", files_wlabel[0])
 
-            files, labels = np.array(files_wlabel)[:, 0].astype(np.str), np.array(np.array(files_wlabel)[:, 1]).astype(np.int)
-            # split into train and test
-            # ipdb.set_trace()
-            skf.get_n_splits(files, labels)
-            for train_index, test_index in skf.split(files, labels):
-                files_train, files_test = files[train_index], files[test_index]
-                labels_train, labels_test = labels[train_index], labels[test_index]
-            num_test = len(test_index)
-            dataset_train = tf.data.Dataset.from_tensor_slices((files_train, labels_train)).repeat().batch(batch_size).shuffle(buffer_size=10000)
-            iter = dataset_train.make_initializable_iterator()
-            ele = iter.get_next()   #you get the filename
+        files, labels = np.array(files_wlabel)[:, 0].astype(np.str), np.array(np.array(files_wlabel)[:, 1]).astype(np.int)
 
+        #### split into train and test
+        # ipdb.set_trace()
+        skf.get_n_splits(files, labels)
+        for train_index, test_index in skf.split(files, labels):
+            files_train, files_test = files[train_index], files[test_index]
+            labels_train, labels_test = labels[train_index], labels[test_index]
+        num_test = len(test_index)
+        num_train = len(files)
+        ### tensorflow dataset
+        dataset_train = tf.data.Dataset.from_tensor_slices((files_train, labels_train)).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        iter = dataset_train.make_initializable_iterator()
+        ele = iter.get_next()   #you get the filename
+        
+        ### pickle training data ###
+        # ipdb.set_trace()
+        # try:
+        #     data_train_all = pickle.load(open('data/{}_pickle_data_train.p'.format(data_version), 'rb'))
+        #     labels_train_all = pickle.load(open('data/{}_pickle_labels_train.p'.format(data_version), 'rb'))
+        #     data_test_all = pickle.load(open('data/{}_pickle_data_test.p'.format(data_version), 'rb'))
+        #     labels_test_all = pickle.load(open('data/{}_pickle_labels_test.p'.format(data_version), 'rb'))
+        #     print("Loaded pickles!")
+        # except:
+        #
+        #     data_train_all = np.zeros((num_train, 10240, 2))
+        #     #labels_train_all = np.zeros((num_train))
+        #     data_test_all = np.zeros((num_test, 10240, 2))
+        #     #labels_test_all = np.zeros((num_test))
+        #     for ind, filename in enumerate(files_train):
+        #         data = func.read_data(filename, header=header, ifnorm=ifnorm)
+        #         data_train_all[ind, :, :] = data
+        #         #if 'F' in filename:
+        #             #labels_train_all[ind] = 1
+        #         if ind % 1000 == 0:
+        #             print(ind, filename, labels_train[ind])
+        #
+        #     for ind, filename in enumerate(files_test):
+        #         data = func.read_data(filename, header=header, ifnorm=ifnorm)
+        #         data_test_all[ind, :, :] = data
+        #         #if 'F' in filename:
+        #             #labels_train_all[ind] = 1
+        #         if ind % 100 == 0:
+        #             print(ind, filename, labels_test[ind])
+        #
+        #     pickle.dump(data_train_all, open( 'data/{}_pickle_data_train.p'.format(data_version), 'wb'))
+        #     pickle.dump(labels_train, open( 'data/{}_pickle_labels_train.p'.format(data_version), 'wb'))
+        #     pickle.dump(data_test_all, open( 'data/{}_pickle_data_test.p'.format(data_version), 'wb'))
+        #     pickle.dump(labels_test, open( 'data/{}_pickle_labels_test.p'.format(data_version), 'wb'))
+        # ipdb.set_trace()
+            
     ################# Constructing the network ###########################
     #outputs = mod.fc_net(x, hid_dims=[500, 300, 100], num_classes = num_classes)   ##
     ##outputs = mod.resi_net(x, hid_dims=[500, 300], num_classes = num_classes)  ## ok very sfast
@@ -111,7 +152,9 @@ def train(x):
     #outputs = mod.Dilated_CNN(x, num_filters=16, seq_len=seq_len, width=width, num_classes = num_classes)
     #outputs = mod.Atrous_CNN(x, num_filters_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 16], kernel_size = [5, 1], seq_len=height, width=width, num_classes = 2)
     #outputs = mod.PyramidPoolingConv(x, num_filters=[2, 4, 8, 16, 32], filter_size=7, dilation_rate=[2, 8, 16, 32], seq_len=height, width=width, num_seg=num_seg, num_classes=num_classes)
-    outputs = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, num_seg=num_seg, num_classes=num_classes)
+    #outputs = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, num_seg=num_seg, num_classes=num_classes)
+    #outputs = mod.Inception_complex(x, num_filters=[4, 8, 16, 32], filter_size=[5, 9], num_block=2, seq_len=height, width=width, num_classes=num_classes)
+    outputs = mod.ResNet(x, num_layer_per_block=3, num_block=4, num_filters=[20, 32, 64, 128], seq_len=height, width=width, num_classes=2)
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
@@ -145,7 +188,6 @@ def train(x):
         threads = tf.train.start_queue_runners(sess=sess, coord=coord)
         np.random.seed(1998745)
         sess.run(iter.initializer)   # every trial restart training
-        #sess.run(iter_test.initializer)    # every trial restart training
         sess.run(tf.global_variables_initializer())
         acc_total_train = np.array([])
         acc_total_test = np.array([])
@@ -158,6 +200,7 @@ def train(x):
             os.makedirs(results_dir)
         print(results_dir)
         # ipdb.set_trace()
+        # for epoch in range(epochs):
         for batch in range(total_batches):#####
             save_name = results_dir + '/' + "step{}_".format( batch)
             filename_train, labels_train =  sess.run(ele)   # names, 1s/0s the filename is bytes object!!! TODO
@@ -166,9 +209,11 @@ def train(x):
             for ind in range(len(filename_train)):
                 # ipdb.set_trace()
                 # print("filename_train[ind]", filename_train[ind])
-                data = func.read_data(filename_train[ind],  header=0, ifnorm=False, start=start, width=width)
+                data = func.read_data(filename_train[ind],  header=header, ifnorm=False, start=start, width=width)
                 data_train[ind, :, :] = data
-            labels_train_hot =  np.eye((num_classes))[labels_train.astype(int)]   # get one-hot lable
+            # data_train = data_train_all[batch_size*batch:(batch+1)*batch_size, :, :]
+            # labels_train_hot =  np.eye((num_classes))[labels_train[batch_size*batch:(batch + 1)*batch_size].astype(int)]   # get one-hot lable
+            labels_train_hot =  np.eye((num_classes))[labels_train.astype(int)] # get one-hot lable
             # ipdb.set_trace()
             #if batch == 0:
                 ##ipdb.set_trace()
@@ -189,14 +234,14 @@ def train(x):
                 # track training
                 acc_total_train = np.append(acc_total_train, acc)
                 loss_total_train = np.append(loss_total_train, c)
-                
+
                 data_test_tot = np.zeros((num_test, seq_len, width))
                 # for ii in range(labels_test.shape[0]):   ## test with 100 per time and then average
                 for ind, filename in enumerate( files_test):
-                    data = func.read_data(filename, header=0, ifnorm=False, start=start, width=width)
+                    data = func.read_data(filename, header=header, ifnorm=False, start=start, width=width)
                     data_test_tot[ind, :, :] = data
                 labels_test_hot =  np.eye((num_classes))[labels_test.astype(int)]
-                
+
                 test_acc_batch = 0
                 for jj in range(num_test // 50):
                     if ifslide:
@@ -206,8 +251,8 @@ def train(x):
                         #labels_test_batch = labels_test_hot[jj*50: (jj+1)*50, :]
                     else:
                         data_test_batch, labels_test_batch  = data_test_tot[jj*50: (jj+1)*50, :, :], labels_test_hot[jj*50: (jj+1)*50, :]
-                    
-                    test_temp, test_pred, test_loss = sess.run([accuracy, outputs, cost], {x: data_test_batch, y: labels_test_batch})   
+
+                    test_temp, test_pred, test_loss = sess.run([accuracy, outputs, cost], {x: data_test_batch, y: labels_test_batch})
                     test_acc_batch += test_temp
                 test_accuracy = test_acc_batch / (num_test // 50)
                 acc_total_test = np.append(acc_total_test, test_accuracy)
@@ -218,11 +263,11 @@ def train(x):
             if batch % save_every == 0:
                 saver.save(sess, logdir + '/batch' + str(batch))
 
-            if batch % plot_every == 0 and batch > test_every * smooth_win_len:   #
+            if batch % plot_every == 0: #and batch > test_every * smooth_win_len:   
 
-                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=True, window_len=smooth_win_len, xlabel= 'training batches / {}'.format( test_every), ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_batch_{}".format(batch))
+                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=False, window_len=smooth_win_len, xlabel= 'training batches / {}'.format( test_every), ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_batch_{}".format(batch))
 
-                func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=True, colors=['c', 'b'], xlabel= 'training batches / {}'.format( test_every), ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_batch_{}".format(batch))
+                func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, colors=['c', 'b'], xlabel= 'training batches / {}'.format( test_every), ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_batch_{}".format(batch))
 
                 func.save_data((acc_total_train, loss_total_train, acc_total_test), header='accuracy_train,loss_train,accuracy_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
 
