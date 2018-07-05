@@ -181,27 +181,6 @@ def load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, ifnorm=Tru
 #x_train=xx_train, y_train=yy_train, x_test=xx_test, y_test=yy_test
 
 
-def my_input_fn(file_path, perform_shuffle=False, epochs=1, num_classes=2):
-    def _parse_line(line):
-        ### decode the line into variables
-        record_defaults = [[1.]] * 20481
-        data = tf.decode_csv(line, record_defaults=record_defaults)   # each line with two values no headere
-        label, data = data[0], data[1:]
-        return label, data
-
-    dataset = (tf.data.TextLineDataset(file_path) # Read text file
-                    .skip(1) # Skip header row
-                    .map(decode_csv)) # Transform each elem by applying decode_csv fn
-    if perform_shuffle:
-       # Randomizes input using a window of 256 elements (read into memory)
-        dataset = dataset.shuffle(buffer_size=256)
-    dataset = dataset.repeat(epochs) # Repeats dataset this # times
-    dataset = dataset.batch(32)  # Batch size to use
-    iterator = dataset.make_one_shot_iterator()
-    batch_features, batch_labels = iterator.get_next()
-    return batch_features, batch_labels
-
-
 def downsampling(filename, ds_factor):
     """Downsample the original data by the factor of ds_factor to get a low resolution version"""
     x, y = read_data(filename)

@@ -4,6 +4,7 @@ import pandas as pd
 import os
 import ipdb
 import fnmatch
+from scipy.fftpack import fft
 import matplotlib.pyplot as plt
 from scipy.stats import zscore
 import functions as func
@@ -123,34 +124,95 @@ def disentangel_ex_inhi(data, window=10, mode='average', save_name='results/'):
     plt.subplot(313)
     plt.plot(cum_exi / (1+np.arange(cum_exi.size)), 'm', label='exci')
     plt.plot(cum_inhi / (1+np.arange(cum_inhi.size)), 'c', label='inhi')
+
+
+def sliding_PSD_slope(data, window=1024, stride=0.25*512, save_name='/results'):
+    '''get windowed data with strides
+    param:
+        data: 1D array
+    return:
+        windowed_data:
+        e.g. array([[ 0,  1,  2,  3,  4],
+       [ 2,  3,  4,  5,  6],
+       [ 4,  5,  6,  7,  8],
+       [ 6,  7,  8,  9, 10],
+       [ 8,  9, 10, 11, 12],
+       [10, 11, 12, 13, 14],
+       [12, 13, 14, 15, 16],
+       [14, 15, 16, 17, 18]])
+'''
+    
+    num_seg = np.int((data.size - np.int(window)) // np.int(stride) + 1)
+    #expand_data = np.zeros((num_seg, window))
+    shape = (num_seg, window)      ## done change the num_seq
+    strides = (data.itemsize*stride, data.itemsize)
+    expand_x = np.lib.stride_tricks.as_strided(data, shape=shape, strides=strides)
+
+    
+    fft_seg = fft(expand_x, axis=1)
+    PSD_seg = np.abs(fft_seg) ** 2
+    scale_PSD = np.log(PSD_seg + 1e-9)
+    from scipy.stats import linregress
+    slopes = np.zeros((PSD_seg.shape[0]))
+    for ii in range(PSD_seg.shape[0]):
+        slope, intercept, r, p, std = linregress(scale_PSD[ii, 0:window//2], np.log(np.arange(window//2)+1))
+        slopes[ii] = slope
+    print(scale_PSD.shape)
+    #plt.loglog(np.arange(window//2), PSD_seg[0:10, 0:window//2].T)
+    #plt.show()
+    #ipdb.set_trace()
+    mask = np.ones(15) / 15.0
+    result = np.convolve(slopes, mask, 'same')
+    plt.figure(figsize=(15,8))
+    plt.subplot(211)
+    plt.plot(np.arange(data.size)/512.0, data)
+    plt.xlim([0, data.size/512.0])
+    plt.subplot(212)
+    plt.plot(np.arange(slopes.size)/(slopes.size/(data.size/512.0)), slopes)
+    plt.ylim([-0.5, 0.0])
+    plt.xlim([0, slopes.size])
+    plt.plot(np.arange(result.size)/(slopes.size/(data.size/512.0)), result, 'm')
+    plt.xlim([0, result.size/(slopes.size/(data.size/512.0))])
+
+    plt.savefig(save_name+"EI_ratio_window{}_stride{}.png".format(window, stride), format='png')
+    
+    plt.close()
+    return slopes
     
     
-data_dir = 'data/test_files/anno'
-save_name = "data/test_files/anno/disentangle/"
+data_dir = 'data/test_files'
+save_name = "data/test_files/disentangle/EI_ratio/"
 '''slide and seg'''
 
 #seq_len = 10240
 #width = 2
 
-#files_wlabel = find_files(data_dir, pattern='*.csv', withlabel=False)
-#num_files = len(files_wlabel)
+files_wlabel = find_files(data_dir, pattern='*.csv', withlabel=False)
+num_files = len(files_wlabel)
 
 #datas = np.zeros((100, seq_len, width))
 #labels = np.array(files_wlabel)[:, 1].astype(np.int)
 #filenames = np.array(files_wlabel)[:, 0].astype(np.str)
 '''cluster'''
-files_wlabel = ['data/test_files/sep09_anno_8_test-long.csv']
+#files_wlabel = ['data/test_files/sep09_anno_8_test-long.csv', 'data/test_files/oct29_anno_5_pre_seizure.csv', 'data/test_files/oct29_anno_6_pre_seizure.csv']
+#datas = np.zeros((num_files*10240))
+#datas = np.zeros((num_files, 10240))
+window = 128
 for ind, filename in enumerate(files_wlabel):
     print(filename)
-    for window in range(16, 33, 14):
-        data = read_data(filename, header=1, ifnorm=False)
-        #datas[ind, :, :] = data
-        
-        disentangel_ex_inhi(data, window=window, mode='average', save_name=save_name+os.path.basename(filename)[0:14])
-        
+    #for window in range(16, 33, 14):
+    data = read_data(filename, header=0, ifnorm=False)
+    #datas[ind, :] = data[:, 0]
 
-    print("Done")
-    ipdb.set_trace()
+    #ipdb.set_trace()
+    slopes = windowed_data = sliding_PSD_slope(data[:, 0], window=window, stride=np.int(0.75*window), save_name=save_name+os.path.basename(filename)[0:-4])  ##np.int(0.75*512)
+    
+    
+#disentangel_ex_inhi(data, window=window, mode='average', save_name=save_name+os.path.basename(filename)[0:14])
+#0 0 0 1 1 0 1 1 0 1 0 0 1 0 0 0 1 0 1 1 1 
+
+print("Done")
+    #ipdb.set_trace()
     #np.savetxt(save_name, aug_data, header="datax,datay,corrx,corry", delimiter=',', comments='')
 
 

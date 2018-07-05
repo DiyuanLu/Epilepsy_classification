@@ -35,7 +35,7 @@ def plotNNFilter(units):
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 500
 save_every = 500
-height, width = 28, 28 #seq_len, 1     # MNIST
+height, width, channels = 28, 28, 1 #seq_len, 1     # MNIST
 batch_size = 100 # old: 16     20has a very good result
 num_classes = 10
 epochs = 200
@@ -62,13 +62,13 @@ def train(x):
 
     #### Constructing the network
     #outputs = mod.fc_net(x, hid_dims=[500, 300], num_classes = num_classes)   ##
-    #outputs = mod.resi_net(x, hid_dims=[500, 300], num_classes = num_classes)  ## ok very sfast
+    outputs = mod.resi_net(x, hid_dims=[500, 300], seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok very sfast
     #outputs = mod.CNN(x, num_filters=[32, 64], seq_len=height, width=width, num_classes = num_classes)    ## ok
     #outputs = mod.DeepConvLSTM(x, num_filters=[32, 64], filter_size=5, num_lstm=128, seq_len=height, width=width, num_classes = num_classes)  ## ok
     #outputs = mod.RNN(x, num_lstm=64, seq_len=height, width=width, num_classes = num_classes)   ##ok
     #outputs = mod.Dilated_CNN(x, num_filters=8, dilation_rate=[2, 8, 16], kernel_size = [3, 3], pool_size=[2, 2], pool_strides=[2, 2], seq_len=height, width=width, num_classes = num_classes) ##ok
     #outputs = mod.Atrous_CNN(x, num_filters_cnn=[4, 8, 16], dilation_rate=[2, 4, 8, 16], kernel_size = [10, 1], seq_len=height, width=width, num_classes = 10) ##ok
-    outputs = mod.Inception(x, filter_size=[3, 5],num_block=2, seq_len=height, width=width, num_classes=num_classes)
+    #outputs = mod.Inception(x, filter_size=[[3, 3], [5, 5]],num_block=2, seq_len=height, width=width, num_classes=num_classes)
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
@@ -94,8 +94,6 @@ def train(x):
 
     with tf.Session() as sess:
          #profiler = tf.profiler.Profiler(sess.graph)
-        options = tf.RunOptions(trace_level=tf.RunOptions.FULL_TRACE)
-        run_metadata = tf.RunMetadata()
 
         np.random.seed(1998745)
         sess.run(tf.global_variables_initializer())
@@ -107,16 +105,12 @@ def train(x):
             ########## MNIST
             batch_data, batch_labels = mnist.train.next_batch(batch_size)
             
-            _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels}, options=options, run_metadata=run_metadata)
+            _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels})
 
             if batch % 10 == 0:
                 print( "batch",batch, 'loss', c, 'accuracy', acc)
             writer.add_summary(summary, batch)
-            ####### # Create the Timeline object, and write it to a json file
-            fetched_timeline = timeline.Timeline(run_metadata.step_stats)
-            chrome_trace = fetched_timeline.generate_chrome_trace_format()
-            with open(save_name + 'timeline_{}.json'.format(batch), 'w') as f:
-                f.write(chrome_trace)
+
 
             if batch % 1 == 0:
                 # track training
