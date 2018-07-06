@@ -97,8 +97,8 @@ def Highway_Block_CNN(x, filter_size=[9, 1], output_channels=8, No_block=0):
         output = H * T + x *(1.0 - T)
         return output
 
-
-def resBlock_CNN(x, filter_size=[9, 1], output_channels=16, stride=[1, 1], name='block', No_block=0):
+### should be good! same conv in the stack No bottleneck
+def resBlock_CNN(x, filter_size=[9, 1], num_stacks=3, output_channels=16, stride=[1, 1], name='block', No_block=0):
     '''Construct residual blocks given the num of filter to use within the block
     param:
         filter_size
@@ -107,37 +107,39 @@ def resBlock_CNN(x, filter_size=[9, 1], output_channels=16, stride=[1, 1], name=
     reference:
     https://chatbotslife.com/resnets-highwaynets-and-densenets-oh-my-9bb15918ee32'''
     
-    net = tf.layers.batch_normalization(x)
-    net = tf.nn.relu(net)
-    ori_dim = x.shape[-1]
-    net = tf.layers.conv2d(
-                                inputs = net,
-                                filters = ori_dim,
-                                kernel_size = [1,1],
+    #net = tf.layers.batch_normalization(x)
+    #net = tf.nn.relu(net)
+
+    ### 1x1, channels you want
+    for stack in range(num_stacks):
+        net = tf.layers.conv2d(
+                                inputs = x,
+                                filters = output_channels,
+                                kernel_size = filter_size,
                                 padding='same',
                                 activation = None)
-    net = tf.layers.batch_normalization(net)
-    net = tf.nn.relu(net)
-    print(name + "_conv1x1", net.shape.as_list())
-    net = tf.layers.conv2d(
-                            inputs = net,
-                            filters = ori_dim,
-                            kernel_size = filter_size,
-                            padding= "same",
-                            activation = None,
-                            name = name + "_conv{}".format(No_block))
-    net = tf.layers.batch_normalization(net)
+        net = tf.layers.batch_normalization(net)
+        net = tf.nn.relu(net)
+        ### 3x3 transformation, channels you want
+        net = tf.layers.conv2d(
+                                inputs = net,
+                                filters = output_channels,
+                                kernel_size = filter_size,
+                                padding='same',
+                                activation = None)
+        net = tf.layers.batch_normalization(net)
+        x = x + net  ### add residual connection
+        x = tf.nn.relu(x)   ### updata the inputs for next stack
     
-    print(name + "_conv", net.shape.as_list())
-    
-    output = x + net
-    
-    return output
+
+    return x
 
         
-
-def CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], seq_len=10240, width=1, channels=1, num_classes = 2):
+### should be good!
+def CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], strides=[2, 2], seq_len=10240, width=1, channels=1, num_classes = 2):
     '''Perform convolution on 1d data
+    tutorial how VNN works
+    http://cs231n.github.io/convolutional-networks/
     Param:
         x: input data, 3D,array, shape=[batch_size, seq_len, width]
         output_channels: number of filterse in one serial-conv-ayer, i,e. one block)
@@ -150,24 +152,47 @@ def CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], seq_len
     inputs = tf.reshape(x, [-1, seq_len, width, channels])   ###
     net = inputs
     variables = {}
-    
+    net = tf.layers.conv2d(
+                            inputs = net,
+                            filters = output_channels[0],
+                            kernel_size = filter_size,
+                            padding= "same",
+                            activation = None)
+    net = tf.layers.batch_normalization(net, center = True, scale = True)
+    net = tf.nn.relu(net)
     print("b4_blocks", net.shape.as_list())
     '''Construct residual blocks'''
     for jj in range(num_block): ### 
         with tf.variable_scope('Resiblock_{}'.format(jj)) as layer_scope:
             ### construct residual block given the number of blocks
-            net = tf.layers.conv2d(
-                            inputs = net,
-                            filters = output_channels[jj],
-                            kernel_size = filter_size,
-                            padding= "same",
-                            activation = None)
-            net = tf.layers.batch_normalization(net, center = True, scale = True)
+                
+            print("block_{}_start shape {}".format(jj, net.shape.as_list()) )
+
             net = resBlock_CNN(net, filter_size=filter_size, output_channels=output_channels[jj], stride=[1, 1], name = layer_scope.name, No_block=jj)
-            
-            net = tf.layers.batch_normalization(net, center = True, scale = True)
-            
-    print("net", net.shape.as_list())
+            print("block_{}_Out shape {}".format(jj, net.shape.as_list()) )
+
+            if jj < num_block - 1:  ## don't do subsampling at the last blcok'
+                #### subsampling
+                
+                net = tf.layers.conv2d(
+                                        inputs = net,
+                                        filters = output_channels[jj+1],
+                                        kernel_size = filter_size,
+                                        strides = strides,
+                                        padding= "same",
+                                        activation = None)
+                net = tf.layers.batch_normalization(net, center = True, scale = True)
+                net = tf.nn.relu(net)
+                net = tf.layers.conv2d(
+                                        inputs = net,
+                                        filters = output_channels[jj+1],
+                                        kernel_size = filter_size,
+                                        padding= "same",
+                                        activation = None)
+                net = tf.layers.batch_normalization(net, center = True, scale = True)
+                net = tf.nn.relu(net)
+                print("block_{}_subsampling shape {}".format(jj, net.shape.as_list()) )
+
 
     
     ##### Logits layer
@@ -181,6 +206,61 @@ def CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], seq_len
 
     return logits
 
+
+def Plain_CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], pool_size=[2,2], strides=[2, 2], seq_len=10240, width=1, channels=1, num_classes = 2):
+    '''https://gist.github.com/giuseppebonaccorso/e77e505fc7b61983f7b42dc1250f31c8
+    A plain CNN as in the tutorial'''
+    net = tf.layers.conv2d(
+                            inputs = x,
+                            filters = output_channels[0],
+                            kernel_size = filter_size,
+                            padding= "same",
+                            activation = tf.nn.relu)
+    #net = tf.layers.batch_normalization(net, center = True, scale = True)
+    net = tf.layers.dropout(inputs=net, rate=0.25)
+    print("shape {}".format(net.shape.as_list()) )
+    net = tf.layers.conv2d(
+                            inputs = net,
+                            filters = output_channels[1],
+                            kernel_size = filter_size,
+                            padding= "same",
+                            activation = tf.nn.relu)
+    print("shape {}".format(net.shape.as_list()) )
+    net = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides)
+    print("shape {}".format(net.shape.as_list()) )
+    #net = tf.layers.batch_normalization(net, center = True, scale = True)
+    net = tf.layers.dropout(inputs=net, rate=0.25)
+    net = tf.layers.conv2d(
+                            inputs = net,
+                            filters = output_channels[2],
+                            kernel_size = filter_size,
+                            padding= "same",
+                            activation = tf.nn.relu)
+    print("shape {}".format(net.shape.as_list()) )
+    net = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides)
+    print("shape {}".format(net.shape.as_list()) )
+    net = tf.layers.conv2d(
+                            inputs = net,
+                            filters = output_channels[2],
+                            kernel_size = filter_size,
+                            padding= "same",
+                            activation = tf.nn.relu)
+    print("shape {}".format(net.shape.as_list()) )
+    net = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides)
+    #net = tf.layers.batch_normalization(net, center = True, scale = True)
+    net = tf.layers.dropout(inputs=net, rate=0.25)
+    print("shape {}".format(net.shape.as_list()) )
+    net = tf.reshape(net, [-1,  net.shape[1]*net.shape[2]*net.shape[3]])   ### *(10240//seq_len)get short segments together
+    net = tf.layers.dense(inputs=net, units=1024, activation=tf.nn.relu)
+    #net = tf.layers.batch_normalization(net, center = True, scale = True)
+    net = tf.layers.dropout(inputs=net, rate=0.5)
+    net = tf.layers.dense(inputs=net, units=50, activation=tf.nn.relu)
+  #net = tf.layers.dropout(inputs=net, rate=0.75)
+
+    logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
+    print("shape {}".format(logits.shape.as_list()) )
+    return logits
+    
 
 
 
@@ -586,18 +666,20 @@ def ResNet(x, num_layer_per_block=3, num_block=4, filter_size=[[5, 1], [9, 1]], 
                             filters = 32,
                             kernel_size = filter_size[1],
                             padding = 'same',
-                            activation = tf.nn.relu)
+                            activation = None)
     #net = tf.layers.max_pooling2d(inputs=net, pool_size=[2, 1], strides=[2, 1])
     net = tf.layers.batch_normalization(net)
+    net = tf.nn.relu(net)
     for block in range(num_block):
         net = tf.layers.conv2d( 
                                 inputs = net,
                                 filters = output_channels[block],
                                 kernel_size = filter_size[0],
                                 padding = 'same',
-                                activation = tf.nn.relu)
-        net = tf.layers.max_pooling2d(inputs=net, pool_size=[2, 1], strides=[2, 1])
+                                activation = None)
+        net = tf.layers.max_pooling2d(inputs=net, pool_size=pool_size, strides=strides)
         net = tf.layers.batch_normalization(net)
+        net = tf.nn.relu(net)
         for layer in range(num_layer_per_block):
             with tf.variable_scope("block{}_layer{}".format(block, layer)) as layer_scope:
                 ### sub block No.1
@@ -606,15 +688,17 @@ def ResNet(x, num_layer_per_block=3, num_block=4, filter_size=[[5, 1], [9, 1]], 
                                     filters = output_channels[block],
                                     kernel_size = filter_size[0],
                                     padding = 'same',
-                                    activation = tf.nn.relu)
+                                    activation = None)
                 net = tf.layers.batch_normalization(net)
+                net = tf.nn.relu(net)
                 net = tf.layers.conv2d( 
                                     inputs = net,
                                     filters = output_channels[block],
                                     kernel_size = filter_size[0],
                                     padding = 'same',
-                                    activation = tf.nn.relu)
+                                    activation = None)
                 net = tf.layers.batch_normalization(net)
+                net = tf.nn.relu(net)
                 #### high-way net
                 H = tf.layers.dense(net, units=output_channels[block], activation=tf.nn.relu)
                 T = tf.layers.dense(net, units=output_channels[block], activation=tf.nn.sigmoid)
@@ -631,93 +715,104 @@ def ResNet(x, num_layer_per_block=3, num_block=4, filter_size=[[5, 1], [9, 1]], 
     
     return logits
    
-    
 
-def AggResNet(x, output_channels=[32, 16, 8], num_stacks=[3, 4, 6, 3], cardinality=16, seq_len=10240, width=2, channels=1, filter_size=[[11, 1], [9, 1]], pool_size=[2, 1], strides=[2, 1], num_classes=2):
+def Bottleneck_stage(x, in_channel, out_channel, num_stack=3, filter_size=[3, 3], strides=[2, 2], cardinality=8, name=0):
+    '''one Aggregate block'''
+    with tf.variable_scope("Bottleneck_stage_{}".format(name)) as layer_scope:
+        for stack in range(num_stack):
+            #with tf.variable_scope("Block_{}_stack_{}".format(name, stack)):
+            ### cardinality conv
+            aggregate_net = 0  ## residial connection
+            for c in range(cardinality):                        
+                ## bottle neck
+                net = tf.layers.conv2d(
+                                        inputs = x,
+                                        filters = 4,
+                                        kernel_size = [1, 1],
+                                        padding = 'same',
+                                        activation = None
+                                    )
+                net = tf.layers.batch_normalization(net)
+                net = tf.nn.relu(net)
+                
+                net = tf.layers.conv2d(
+                                        inputs = net,
+                                        filters = 4,
+                                        kernel_size = filter_size,
+                                        padding = 'same',
+                                        activation = None
+                                        )
+                net = tf.layers.batch_normalization(net)
+                net = tf.nn.relu(net)
+                
+                net = tf.layers.conv2d(
+                                        inputs = net,
+                                        filters = in_channel,
+                                        kernel_size = [1, 1],
+                                        padding = 'same',
+                                        activation = None
+                                        )
+                aggregate_net += net
+            
+            aggregate_net = tf.layers.batch_normalization(aggregate_net)
+            aggregate_net = tf.nn.relu(aggregate_net)
+            inputs = aggregate_net + x ### residual add
+
+        ## "Width is increased by 2 when the stage changes (downsampling), as in Sec. 3.1"
+        net = tf.layers.conv2d(
+                                    inputs = net,
+                                    filters = in_channel * 2,
+                                    kernel_size = [1, 1],
+                                    strides = strides,
+                                    padding = 'same',
+                                    activation = None
+                                    )
+        net = tf.layers.batch_normalization(net)
+        net = tf.nn.relu(net)
+        print("resi{}_output {}".format(name, stack), inputs.shape.as_list())
+
+        return net
+            
+
+def AggResNet(x, output_channels=[2, 4, 8], num_stacks=[3, 4, 3], cardinality=16, seq_len=10240, width=2, channels=1, filter_size=[[11, 1], [9, 1]], pool_size=[2, 1], strides=[2, 1], num_classes=2, ifaverage_pool=False):
     '''Paper: Aggregated Residual Transformations for Deep Neural Networks
     param:
         output_channels: the output channesl for each block, and each block have a number of cardinality paths in parallel
-        num_subBlock: the number of stacked subbloks, should be in the same size as output_channels'''
+        num_subBlock: the number of stacked subbloks, should be in the same size as output_channels
+
+    ('starting 3x3 conv', [None, 32, 32, 16])
+    ('Stage 0 start', [None, 32, 32, 16])
+    ('resi0_output 2', [None, 32, 32, 16])
+    ('Stage 1 start', [None, 16, 16, 32])
+    ('resi1_output 3', [None, 16, 16, 32])
+    ('Stage 2 start', [None, 8, 8, 64])
+    ('resi2_output 2', [None, 8, 8, 64])
+
+    '''
     net = tf.reshape(x, [-1, seq_len, width, channels])
     ### Conv 1 kernel_size=big, stride=2
     net = tf.layers.conv2d(
                             inputs = net,
-                            filters = output_channels[0] * 2,
+                            filters = output_channels[0],
                             kernel_size = filter_size[0],
-                            strides = strides,
                             padding = 'same',
                             activation = None
                             )
     net = tf.layers.batch_normalization(net)
     net = tf.nn.relu(net)
     print("starting 3x3 conv", net.shape.as_list())
-    ## Conv 2
-    net = tf.layers.max_pooling2d(inputs=net, pool_size=pool_size, strides=strides, padding='same')
 
-    def Bottleneck_stage(inputs, in_channel, out_channel, num_stack=3, cardinality=cardinality, name=0):
-        '''one Aggregate block'''
-        with tf.variable_scope("Bottleneck_stage_{}".format(name)) as layer_scope:
-            for stack in range(num_stack):
-                #with tf.variable_scope("Block_{}_stack_{}".format(name, stack)):
-                ### cardinality conv
-                aggregate_net = 0  ## residial connection
-                for c in range(cardinality):                        
-                    ## bottle neck
-                    net = tf.layers.conv2d(
-                                            inputs = inputs,
-                                            filters = 4,
-                                            kernel_size = [1, 1],
-                                            padding = 'same',
-                                            activation = None
-                                        )
-                    net = tf.layers.batch_normalization(net)
-                    net = tf.nn.relu(net)
-                    
-                    net = tf.layers.conv2d(
-                                            inputs = net,
-                                            filters = 4,
-                                            kernel_size = filter_size[1],
-                                            padding = 'same',
-                                            activation = None
-                                            )
-                    net = tf.layers.batch_normalization(net)
-                    net = tf.nn.relu(net)
-                    
-                    net = tf.layers.conv2d(
-                                            inputs = net,
-                                            filters = in_channel,
-                                            kernel_size = [1, 1],
-                                            padding = 'same',
-                                            activation = None
-                                            )
-                    aggregate_net += net
-                
-                aggregate_net = tf.layers.batch_normalization(aggregate_net)
-                aggregate_net = tf.nn.relu(aggregate_net)
-                inputs = aggregate_net + inputs ### residual add
-
-            ## "Width is increased by 2 when the stage changes (downsampling), as in Sec. 3.1"
-            net = tf.layers.conv2d(
-                                        inputs = net,
-                                        filters = out_channel,
-                                        kernel_size = [1, 1],
-                                        padding = 'same',
-                                        activation = None
-                                        )
-            net = tf.layers.batch_normalization(net)
-            net = tf.nn.relu(net)
-            print("resi{}_output {}".format(name, stack), inputs.shape.as_list())
-
-            return net
         
     for ind, out_channel in enumerate(output_channels):
-        print("Stage {}".format(ind), net.shape.as_list())
-        net = Bottleneck_stage(net, net.shape[-1], out_channel, num_stack=num_stacks[ind], cardinality=cardinality, name=ind)
+        print("Stage {} start".format(ind), net.shape.as_list())
         
-    net = tf.layers.average_pooling2d(inputs=net, pool_size=pool_size, strides=[2, 2], padding='same')
+        net = Bottleneck_stage(net, net.shape[-1], out_channel, num_stack=num_stacks[ind], cardinality=cardinality, name=ind)
+    #ipdb.set_trace()    
+    net = tf.layers.average_pooling2d(inputs=net, pool_size=pool_size, strides=[1, 1], padding='same')
     print("pooling", net.shape.as_list())
     net = tf.layers.flatten(net)
     net = tf.layers.dense(inputs=net, units=500, activation=tf.nn.relu)
+    net = tf.layers.batch_normalization(net)
     logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.softmax)
 
     return logits

@@ -20,7 +20,7 @@ kfolds = 10
 skf = StratifiedKFold(n_splits=kfolds, shuffle=True)   ## keep the class ratio balance in each fold
 
 def lr(epoch):
-    learning_rate = 1e-3
+    learning_rate = 5 * 1e-3
     if epoch > 80:
         learning_rate *= 0.5e-3
     elif epoch > 60:
@@ -55,7 +55,7 @@ header = None
 data_dir = "data/train_data"
 pattern='Data*.csv'
 data_version = 'Data'
-version = 'whole_{}_CNN'.format(pattern[0:4])#    DeepConvLSTM   Atrous_CNN     PyramidPoolingConv         #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
+version = 'whole_{}_AggResNet'.format(pattern[0:4])#    DeepConvLSTM   Atrous_CNN     PyramidPoolingConv         #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
 results_dir= "results/" + version + '/cpu-batch{}/slide10-vote-Adam-Data-'.format(batch_size)+ datetime#cnv4_lstm64test
 
 logdir = results_dir+ "/model"
@@ -158,8 +158,8 @@ def train(x):
     #outputs = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
     #outputs = mod.Inception_complex(x, output_channels=[4, 8, 16, 32], filter_size=[5, 9], num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
     #outputs = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
-    outputs = mod.AggResNet(x, output_channels=[2, 4, 8], num_subBlocks=[3, 4, 3], cardinality=4, seq_len=height, width=2, filter_size=[9, 1], pool_size=[2, 1], strides=[2, 1], num_classes=2)
-    
+    outputs = mod.AggResNet(x, output_channels=[4, 8, 16], num_stacks=[3, 3, 3], cardinality=16, seq_len=height, width=width, channels=channels, filter_size=[7, 1], pool_size=[4, 1], strides=[4, 1], num_classes=num_classes)
+    #ipdb.set_trace()
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):

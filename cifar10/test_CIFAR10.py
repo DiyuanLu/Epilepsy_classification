@@ -19,7 +19,7 @@ import ipdb
 
 
 def lr(epoch):
-    learning_rate = 1e-3
+    learning_rate = 0.001
     if epoch > 80:
         learning_rate *= 0.5e-3
     elif epoch > 60:
@@ -34,10 +34,10 @@ datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 500
 save_every = 50
 height, width, channels = 32, 32, 3 #seq_len, 1     # MNIST
-batch_size = 50 # old: 16     20has a very good result
+batch_size = 100 # old: 16     20has a very good result
 num_classes = 10
 #pattern='ds_8*.csv'
-version = 'AggResNet'  #'Inception'              #DilatedCNNDeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
+version = 'Plain_CNN'   ##'AggResNet'  # 'CNN'  ###'Inception'   #            #DilatedCNNDeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
 data_dir = 'cifar_data/cifar10/'
 results_dir= "results/3-CIFAR10_checks/" + version + '/batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
@@ -52,7 +52,9 @@ learning_rate = tf.placeholder("float32")
 ### load data
 (data_train, y_train), (data_test, y_test) = cifar10.load_data()
 ## x_train(50000, 32, 32, 3)
-
+## test(10000, 32, 32, 3)
+data_train = data_train / 255.0
+data_test = data_test / 255.0
 y_train = np.squeeze(y_train)
 y_test = np.squeeze(y_test)
 
@@ -65,7 +67,9 @@ def train(x):
     #### Constructing the network
     #outputs = mod.fc_net(x, hid_dims=[500, 300], num_classes = num_classes)   ##
     #outputs = mod.resi_net(x, hid_dims=[500, 300], num_classes = num_classes)  ## ok very sfast
-    #outputs = mod.CNN(x, output_channels=[32, 64, 128], num_block=3, filter_size=[3, 3], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
+    #outputs = mod.CNN(x, output_channels=[16, 32, 64], num_block=3, filter_size=[3, 3], strides=[2, 2], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
+    outputs = mod.Plain_CNN(x, output_channels=[32, 64, 128], num_block=3, pool_size=[2, 2], filter_size=[3, 3], strides=[2, 2], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
+    
     #outputs = mod.DeepConvLSTM(x, output_channels=[32, 64], filter_size=5, num_lstm=128, seq_len=height, width=width, num_classes = num_classes)  ## ok
     #outputs = mod.RNN(x, num_lstm=64, seq_len=height, width=width, num_classes = num_classes)   ##ok
     #outputs = mod.Dilated_CNN(x, output_channels=8, dilation_rate=[2, 8, 16], kernel_size = [3, 3], pool_size=[2, 2], pool_strides=[2, 2], seq_len=height, width=width, num_classes = num_classes) ##ok
@@ -73,7 +77,8 @@ def train(x):
     #outputs = mod.Inception(x, filter_size=[[3, 3], [5, 5]],num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
 
     #outputs = mod.Inception_complex(x, output_channels=[16, 32], filter_size=[[3, 3], [5, 5]], pool_size=[2, 2], strides=[2, 2], num_blocks=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
-    outputs = mod.AggResNet(x, output_channels=[32, 16, 8], num_stacks=[3, 4, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[[3, 3], [3, 3]], pool_size=[2, 2], strides=[2, 2],num_classes=num_classes)   ## output_channels should be the same length as num_subBlocks
+    #outputs = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[[3, 3], [3, 3]], pool_size=[2, 2], strides=[2, 2],num_classes=num_classes)   ## output_channels should be the same length as num_subBlocks
+    #ipdb.set_trace()
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
@@ -87,11 +92,15 @@ def train(x):
         tf.summary.scalar('accuracy', accuracy)
         test_acc_sum = tf.summary.scalar('test_accuracy', test_acc)
 
-    optimizer = tf.train.AdamOptimizer(
-                                    learning_rate=learning_rate,
-                                    beta1=0.9,
-                                    beta2=0.999,
-                                    epsilon=1e-08).minimize(cost)
+    #optimizer = tf.train.AdamOptimizer(
+                            #learning_rate=learning_rate,
+                            #beta1=0.9,  ##The exponential decay rate for the 1st moment estimates.
+                            #beta2=0.999,  ##  The exponential decay rate for the 2nd moment estimates
+                            #epsilon=1e-08).minimize(cost)
+    optimizer = tf.train.RMSPropOptimizer(
+                            learning_rate=learning_rate,
+                            momentum=0.9, 
+                            epsilon=1e-08).minimize(cost)
     #optimizer = tf.train.GradientDescentOptimizer(0.001).minimize(cost)
 
     #################### Set up logging for TensorBoard.
@@ -135,7 +144,7 @@ def train(x):
                 loss_epoch += c
 
                 ### Test
-                if batch % 200 == 0 and batch > 1:
+                if batch % total_batches//3 == 0:
                     ### test on the whole test set
                     for k in range(len(data_test) // batch_size):
                         test_data = data_test[k*batch_size : (k+1)*batch_size]
@@ -148,7 +157,9 @@ def train(x):
                     loss_epoch_test = loss_epoch_test/ (k + 1)
                     print("epoch", epoch, "batch", batch, 'loss', c, 'train_accuracy', acc, "test_acc", test_acc)
                     ########################################################
-                
+
+                if batch % 20 == 0:
+                    print("epoch", epoch, "batch", batch, 'loss', c, 'train_accuracy', acc)
 
 
                     #func.save_data((acc_total_train, loss_total_train, acc_total_test), header='accuracy_train,loss_train,accuracy_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
