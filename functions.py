@@ -453,7 +453,7 @@ def plot_learning_curve(train_scores, test_scores , num_trial=1, title="Learning
     plt.savefig(save_name, format="pdf")
     plt.close()
 
-def plot_smooth_shadow_curve(datas, ifsmooth=False, window_len=25, colors=['darkcyan'], xlabel='training batches / 20', ylabel='accuracy', title='Loss during training', labels='accuracy_train', save_name="loss"):
+def plot_smooth_shadow_curve(datas, ifsmooth=False, ylim=[0, 1.05], window_len=25, colors=['darkcyan'], xlabel='training batches / 20', ylabel='accuracy', title='Loss during training', labels='accuracy_train', save_name="loss"):
     '''plot a smooth version of noisy data with mean and std as shadow
     data: a list of variables values, shape: (batches, )
     color: list of prefered colors
@@ -472,11 +472,11 @@ def plot_smooth_shadow_curve(datas, ifsmooth=False, window_len=25, colors=['dark
             plt.plot(np.arange(sizes), data_smooth, '-', linewidth=2, color=colors[ind], label=labels[ind])
     else:
         for ind, data in enumerate(datas) :
-            plt.plot(data, '-', linewidth=2, color=colors[ind], label=labels[ind])
+            plt.plot(data, '*-', linewidth=2, color=colors[ind], label=labels[ind])
             
     plt.ylabel(ylabel)
     plt.xlabel(xlabel)
-    plt.ylim([0, 1.05])
+    plt.ylim(ylim)
     plt.legend(loc="best")
     plt.title(title)
     plt.savefig(save_name+'.png', format="png")
@@ -592,32 +592,37 @@ def vis_conv_layer_activation(sess, layer_name, inputs, save_name='results/'):
     plt.savefig(save_name + "conv_kernals.pdf", format="pdf")
     plt.close()
     
-def plot_train_samples(samples, true_labels, save_name='results/'):
+def plot_train_samples(samples, true_labels, xlabel='label: 0', ylabel='value', save_name='results/'):
     plt.figure()
     for ii in range(20):
         ax1 = plt.subplot(5, 4, ii +1)
-        plt.plot(np.arange(samples[ii, :, 0])/ 512.0, samples[ii, :, 0])
-        plt.xlim([0, samples[ii, :, 0]/ 512.0])
-        plt.xlabel("label: "+ np.str(true_labels[ii]))
-        plt.ylabel("Voltage (mV)")
+        #plt.plot(np.arange(samples[ii, :, 0])/ 512.0, samples[ii, :, 0])
+        plt.imshow(samples[ii], interpolation='nearest', aspect='auto')
+        #plt.xlim([0, samples[ii]/ 512.0])
+        #plt.xlim([0, samples[ii]])
+        plt.xlabel("label: " + np.str(true_labels[ii]))
+        if not ylabel:
+            plt.ylabel(ylabel)
         #plt.setp(ax1.get_yticklabels(), visible = False)
         plt.setp(ax1.get_xticklabels(), visible = False)
+        plt.setp(ax1.get_yticklabels(), visible = False)
     plt.tight_layout()
-    plt.savefig(save_name + 'samples_train.png', format = 'pdf')
+    plt.savefig(save_name + 'samples_train.png', format = 'png')
     plt.close()
 
 def plot_BB_training_examples(samples, true_labels, save_name='results/'):
     
-    for ii in range(6):
+    for ii in range(3):
         plt.figure()
         for ind in range(samples[ii, :, :].shape[-1]):
         
             ax1 = plt.subplot(samples[ii, :, :].shape[-1], 1, ind+1)
-            plt.plot(np.arange(samples[ii, :, ind])/ 512.0, samples[ii, :, ind], label="data_{}".format(ind+1))
-            plt.ylabel("Voltage (mV)")
-            plt.xlabel("data samples, label={}".format(true_labels[ii]))
+            plt.plot(np.arange(samples[ii, :, ind].size)/ 512.0, samples[ii, :, ind], label="data_{}".format(ind+1))
+            plt.ylabel("amplitude ")
+            plt.xlabel("time / s")
             plt.legend()
             plt.xlim([0, samples[ii, :, 0].size/ 512.0])
+        plt.xlabel("data samples, label={}".format(true_labels[ii]))
         plt.tight_layout()
         plt.savefig(save_name + "vis_train_data{}.png".format(ii), format="png")
         plt.close()

@@ -20,33 +20,44 @@ kfolds = 10
 skf = StratifiedKFold(n_splits=kfolds, shuffle=True)   ## keep the class ratio balance in each fold
 
 def lr(epoch):
-    learning_rate = 5 * 1e-3
+    learning_rate = 0.0005
     if epoch > 80:
         learning_rate *= 0.5e-3
-    elif epoch > 60:
-        learning_rate *= 1e-3
-    elif epoch > 40:
-        learning_rate *= 1e-2
     elif epoch > 20:
+        learning_rate *= 1e-3
+    elif epoch > 10:
+        learning_rate *= 1e-2
+    elif epoch > 4:
         learning_rate *= 1e-1
     return learning_rate
 
 #ipdb.set_trace()
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 100
-save_every = 10
-test_every = 10
+save_every = 2
+test_every = 50
 smooth_win_len = 20
 seq_len = 10240  #1280   ## 
 height = seq_len
 width = 2  # with augmentation 2   ### data width
 channels = 1
-start = 0        #'original,delta:1-4Hz,theta:4-8Hz,alpha:8-13Hz,beta:13-30Hz,gamma:30-70Hz'
-num_seg = 5   ## number of shorter segments you want to divide the original long sequence with a sliding window
+start = 0
 ifnorm = True
-ifslide = True  ##False    #
+ifslide = False    #True  ##
+if ifslide:
+    majority_vote = True
+    num_seg = 5   ## number of shorter segments you want to divide the original long sequence with a sliding window
+    ### use a 5s window slide over the 20s recording and do classification on segments, and then do a average vote
+    height = np.int(height / num_seg)
+    x = tf.placeholder("float32", [None, height, width])  #20s recording width of each recording is 1, there are 2 channels
+else:
+    majority_vote = False
+    num_seg = 1
+    x = tf.placeholder("float32", [None, height, width])
+y = tf.placeholder("float32")
+learning_rate = tf.placeholder("float32")
+
 post_process = "majority_vote"   #'averaging_window'    ## 
-majority_vote = True   #False   ##
 batch_size = 20  # old: 16     20has a very good result
 num_classes = 2
 epochs = 200
@@ -55,18 +66,11 @@ header = None
 data_dir = "data/train_data"
 pattern='Data*.csv'
 data_version = 'Data'
-version = 'whole_{}_AggResNet'.format(pattern[0:4])#    DeepConvLSTM   Atrous_CNN     PyramidPoolingConv         #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
-results_dir= "results/" + version + '/cpu-batch{}/slide10-vote-Adam-Data-'.format(batch_size)+ datetime#cnv4_lstm64test
+version = 'whole_{}_CNN_Tutorial'.format(pattern[0:4])# AggResNet   DeepConvLSTM   Atrous_CNN     PyramidPoolingConv         #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
+results_dir= "results/" + version + '/cpu-batch{}/slide{}-vote{}'.format(batch_size, num_seg, majority_vote)+ datetime#cnv4_lstm64test
 
 logdir = results_dir+ "/model"
 
-if ifslide:   ### use a 5s window slide over the 20s recording and do classification on segments, and then do a average vote
-    height = np.int(height / num_seg)
-    x = tf.placeholder("float32", [None, height, width])  #20s recording width of each recording is 1, there are 2 channels
-else:
-    x = tf.placeholder("float32", [None, height, width])
-y = tf.placeholder("float32")
-learning_rate = tf.placeholder("float32")
 
 def postprocess(prediction, num_seg=10, Threshold=0.5):
     '''post process the prediction label. average among all the segments of one sequence. Since it is binary classification, Threshold as 0.5 and the average could work
@@ -88,18 +92,6 @@ def average_window(prediction, window=4, threshold=0.6):
     result = np.convolve(prediction, filters, 'same')
 
     return result
-
-def lr(epoch):
-    learning_rate = 1e-3
-    if epoch > 80:
-        learning_rate *= 0.5e-3
-    elif epoch > 60:
-        learning_rate *= 1e-3
-    elif epoch > 40:
-        learning_rate *= 1e-2
-    elif epoch > 20:
-        learning_rate *= 1e-1
-    return learning_rate
 
 
     
@@ -136,7 +128,8 @@ def train(x):
             files_train, files_test = files[train_index], files[test_index]
             labels_train, labels_test = labels[train_index], labels[test_index]
         num_test = len(test_index)
-        num_train = len(files)
+        num_train = len(files_train)
+        print("num_train", num_train, "num_test", num_test)
         
         ### tensorflow dataset
         dataset_train = tf.data.Dataset.from_tensor_slices((files_train, labels_train)).repeat().batch(batch_size).shuffle(buffer_size=10000)
@@ -147,10 +140,10 @@ def train(x):
             
     ################# Constructing the network ###########################
     #outputs = mod.fc_net(x, hid_dims=[500, 300, 100], num_classes = num_classes)   ##
-    #outputs = mod.resi_net(x, hid_dims=[500, 300], num_blocks=1, num_classes = 2)  ## ok very sfast
-    #outputs = mod.CNN(x, output_channels=[4, 8, 16], num_block=2, filter_size=[9, 1], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
+    #outputs = mod.resi_net(x, hid_dims=[500, 300], seq_len=height, width=width, channels=channels, num_blocks=2, num_classes = num_classes)
+    #outputs = mod.CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], seq_len=height, width=width, channels=channels, num_classes = num_classes)
     #outputs = mod.CNN_new(x, output_channels=[4, 8, 16, 32], num_block=2, num_seg=num_seg, seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
-    #outputs = mod.DeepConvLSTM(x, output_channels=[8, 16, 32], filter_size=9, num_lstm=64, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
+    #outputs = mod.DeepConvLSTM(x, output_channels=[8, 16, 32], filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], num_lstm=64, group_size=8, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
     #outputs = mod.RNN(x, num_lstm=128, seq_len=height, width=width, channels=channels, group_size=32, num_classes = num_classes)   ##ok
     #outputs = mod.Dilated_CNN(x, output_channels=16, seq_len=seq_len, width=width, channels=channels, num_classes = num_classes)
     #outputs = mod.Atrous_CNN(x, output_channels_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 16], kernel_size = [5, 1], seq_len=height, width=width, channels=channels, num_classes = 2)
@@ -158,8 +151,9 @@ def train(x):
     #outputs = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
     #outputs = mod.Inception_complex(x, output_channels=[4, 8, 16, 32], filter_size=[5, 9], num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
     #outputs = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
-    outputs = mod.AggResNet(x, output_channels=[4, 8, 16], num_stacks=[3, 3, 3], cardinality=16, seq_len=height, width=width, channels=channels, filter_size=[7, 1], pool_size=[4, 1], strides=[4, 1], num_classes=num_classes)
-    #ipdb.set_trace()
+    #outputs = mod.AggResNet(x, output_channels=[4, 8, 16], num_stacks=[3, 3, 3], cardinality=16, seq_len=height, width=width, channels=channels, filter_size=[7, 1], pool_size=[4, 1], strides=[2, 1], fc=500, num_classes=num_classes)
+
+    outputs = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc1=1500) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
@@ -216,27 +210,19 @@ def train(x):
         for epoch in range(epochs):
             acc_epoch_train = 0
             loss_epoch_train = 0
-            acc_epoch_test = 0
-            loss_epoch_test = 0
             for batch in range(num_train//batch_size):#####
                 save_name = results_dir + '/' + "step{}_".format( batch)
                 filename_train, labels_train =  sess.run(ele)   # names, 1s/0s the filename is bytes object!!! TODO
                 data_train = np.zeros([batch_size, seq_len, width])
                 filename_train = filename_train.astype(np.str)
                 for ind in range(len(filename_train)):
-                    # ipdb.set_trace()
-                    # print("filename_train[ind]", filename_train[ind])
-                    data = func.read_data(filename_train[ind],  header=header, ifnorm=False, start=start, width=width)
+                    data = func.read_data(filename_train[ind],  header=header, ifnorm=True, start=start, width=width)
                     data_train[ind, :, :] = data
-                # data_train = data_train_all[batch_size*batch:(batch+1)*batch_size, :, :]
-                # labels_train_hot =  np.eye((num_classes))[labels_train[batch_size*batch:(batch + 1)*batch_size].astype(int)]   # get one-hot lable
-                labels_train_hot =  np.eye((num_classes))[labels_train.astype(int)] # get one-hot lable
-                # ipdb.set_trace()
-                #if batch == 0:
-                    ##ipdb.set_trace()
-                    #func.plot_BB_training_examples(data_train, labels_train, save_name=save_name)
-                    #ipdb.set_trace()
 
+                labels_train_hot =  np.eye((num_classes))[labels_train.astype(int)] # get one-hot lable
+
+                if epoch == 0 and batch == 0:
+                    func.plot_BB_training_examples(data_train[0:10, :, :], labels_train[0:10], save_name=save_name)
                 # ipdb.set_trace()
                 if ifslide:
                     data_slide = func.slide_and_segment(data_train, num_seg, window=seq_len//num_seg, stride=seq_len//num_seg )## 5s segment with 1s overlap
@@ -252,11 +238,14 @@ def train(x):
                 loss_epoch_train += c
                 ###################### test ######################################
                 if batch % test_every == 0:
-                    # track training
+                    # track test
+                    
+                    acc_epoch_test = 0
+                    loss_epoch_test = 0
                     data_test_tot = np.zeros((num_test, seq_len, width))
                     # for ii in range(labels_test.shape[0]):   ## test with 100 per time and then average
                     for ind, filename in enumerate( files_test):
-                        data = func.read_data(filename, header=header, ifnorm=False, start=start, width=width)
+                        data = func.read_data(filename, header=header, ifnorm=True, start=start, width=width)
                         data_test_tot[ind, :, :] = data
                     labels_test_hot =  np.eye((num_classes))[labels_test.astype(int)]
                     
@@ -277,25 +266,24 @@ def train(x):
                     acc_epoch_test /= (jj + 1)
                     loss_epoch_test /= (jj + 1)
                     
-                    print('epoch', epoch, "batch:",batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', test_acc)
+                    print('epoch', epoch, "batch:",batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', acc_epoch_test)
                     ########################################################
-
-            if epoch % save_every == 0:
-                    saver.save(sess, logdir + '/batch' + str(batch))
-
-            if epoch % 1 == 0:
-                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=False, window_len=smooth_win_len, xlabel= 'training epochs', ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_epoch_{}".format(epoch))
-
-                func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, colors=['c', 'b'], xlabel= 'training epochs', ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_epoch_{}".format(epoch))
-
-                func.save_data((acc_total_train, loss_total_train, acc_total_test), header='accuracy_train,loss_train,accuracy_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
-
-            
             # track training and testing
             loss_total_train.append(loss_epoch_train / (batch + 1))            
             acc_total_train.append(acc_epoch_train / (batch + 1))
             loss_total_test.append(loss_epoch_test)            
             acc_total_test.append(acc_epoch_test)
+            
+            if epoch % save_every == 0:
+                    saver.save(sess, logdir + '/epoch' + str(epoch))                   
+            
+            if epoch % 1 == 0:
+                
+                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=False, window_len=smooth_win_len, xlabel= 'training epochs', ylabel="accuracy", colors=['darkcyan', 'm'], ylim=[0.45, 1.05], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_epoch_{}".format(epoch))
+
+                func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, colors=['c', 'violet'], ylim=[0.05, 0.9], xlabel= 'training epochs', ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_epoch_{}".format(epoch))
+
+                func.save_data((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test', save_name=results_dir + '/' +'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
 
         #np.savetxt('outliers.csv', outliers, fmt='%s', newline= ', ', delimiter=',')
     #coord.request_stop()
