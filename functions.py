@@ -473,6 +473,9 @@ def plot_smooth_shadow_curve(datas, ifsmooth=False, ylim=[0, 1.05], window_len=2
     else:
         for ind, data in enumerate(datas) :
             plt.plot(data, '*-', linewidth=2, color=colors[ind], label=labels[ind])
+            plt.hlines(0.8, 0, np.array(data).size, linestyle='--', colors='salmon',  linewidth=1.5)
+            plt.hlines(0.85, 0, np.array(data).size, linestyle='--', colors='salmon', linewidth=1.5)
+            plt.hlines(0.9, 0, np.array(data).size, linestyle='--', colors='salmon', linewidth=1.5)
             
     plt.ylabel(ylabel)
     plt.xlabel(xlabel)

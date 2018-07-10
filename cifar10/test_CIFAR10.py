@@ -22,9 +22,9 @@ def lr(epoch):
     learning_rate = 0.001
     if epoch > 80:
         learning_rate *= 0.5e-3
-    elif epoch > 60:
-        learning_rate *= 1e-3
     elif epoch > 40:
+        learning_rate *= 1e-3
+    elif epoch > 20:
         learning_rate *= 1e-2
     elif epoch > 10:
         learning_rate *= 1e-1
@@ -37,7 +37,7 @@ height, width, channels = 32, 32, 3 #seq_len, 1     # MNIST
 batch_size = 100 # old: 16     20has a very good result
 num_classes = 10
 #pattern='ds_8*.csv'
-version = 'AggResNet'  #'CNN_tutorial' #'Resi_HighwayFNN'  #'Plain_CNN'   ## 'CNN'  ###'Inception'   #            #DilatedCNNDeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
+version = 'CNN_Tutorial_Resi'  #'CNN_tutorial' #'AggResNet'  #'Resi_HighwayFNN'  #'Plain_CNN'   ## 'CNN'  ###'Inception'   #            #DilatedCNNDeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
 data_dir = 'cifar_data/cifar10/'
 results_dir= "results/3-CIFAR10_checks/" + version + '/batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
@@ -67,7 +67,7 @@ def train(x):
     #### Constructing the network
     #outputs = mod.fc_net(x, hid_dims=[500, 300], num_classes = num_classes)   ##
     #outputs = mod.resi_net(x, hid_dims=[500, 300], seq_len=height, width=width, channels=channels, num_blocks=2, num_classes = num_classes)   ## works, not amazing
-    outputs = mod.CNN(x, output_channels=[16, 32, 64], num_block=3, filter_size=[3, 3], strides=[2, 2], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
+    #outputs = mod.CNN(x, output_channels=[16, 32, 64], num_block=3, filter_size=[3, 3], strides=[2, 2], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
     #outputs = mod.Plain_CNN(x, output_channels=[32, 64, 128], num_block=3, pool_size=[2, 2], filter_size=[3, 3], strides=[2, 2], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
     
     #outputs = mod.DeepConvLSTM(x, output_channels=[8, 16, 32], filter_size=[3, 3], num_lstm=64, pool_size=[2, 2], strides=[2, 2],  group_size=1, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
@@ -76,8 +76,9 @@ def train(x):
     #outputs = mod.Inception(x, filter_size=[[3, 3], [5, 5]],num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
 
     #outputs = mod.Inception_complex(x, output_channels=[16, 32], filter_size=[[3, 3], [5, 5]], pool_size=[2, 2], strides=[2, 2], num_blocks=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
-    #outputs = mod.AggResNet(x, output_channels=[16, 32, 64], num_stacks=[3, 3, 3], cardinality=16, seq_len=height, width=width, channels=channels, filter_size=[[3, 3], [3, 3]], pool_size=[2, 2], strides=[2, 2], fc1=200, num_classes=num_classes)   ## output_channels should be the same length as num_subBlocks
-    #outputs = mod.CNN_Tutorial(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, pool_size=[2, 2], strides=[2, 2], filter_size=[[3, 3], [2, 2]], num_classes=num_classes)### this works very well on both
+    #outputs, fc_act = mod.AggResNet(x, output_channels=[16, 32, 64], num_stacks=[3, 3, 3], cardinality=16, seq_len=height, width=width, channels=channels, filter_size=[[3, 3], [2, 2]], pool_size=[2, 2], strides=[2, 2], fc1=200, num_classes=num_classes)   ## output_channels should be the same length as num_subBlocks
+    #outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=height, width=width, channels=channels, pool_size=[2, 2], strides=[2, 2], filter_size=[[3, 3], [2, 2]], num_classes=num_classes, fc1=1500)### this works very well on both
+    outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, pool_size=[2, 2], strides=[2, 2], filter_size=[[3, 3], [2, 2]], num_classes=num_classes, fc1=200)###
     #ipdb.set_trace()
 
     with tf.name_scope("loss"):
