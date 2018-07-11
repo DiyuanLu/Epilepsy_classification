@@ -13,7 +13,7 @@ from scipy.stats import ttest_ind
 import pickle
 from sklearn.model_selection import train_test_split
 import argparse
-
+import sys
 
 
 def get_arguments():
@@ -116,9 +116,10 @@ header = None
 data_dir = "data/train_data"
 pattern='Data*.csv'
 version = 'whole_{}_CNN_Tutorial'.format(pattern[0:4])# AggResNet   DeepConvLSTM   Atrous_CNN     PyramidPoolingConv         #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
-results_dir= "results/" + version + '/cpu-batch{}/slide{}-vote{}-lr0.001'.format(batch_size, num_seg, majority_vote)+ datetime#cnv4_lstm64test
+results_dir= "results/" + version + '/cpu-batch{}/slide{}-vote{}-lr0.001-add-noise-fc500'.format(batch_size, num_seg, majority_vote)+ datetime#cnv4_lstm64test
 
 logdir = results_dir+ "/model"
+tf.set_random_seed(1998745)
 
 
 def postprocess(prediction, num_seg=10, Threshold=0.5):
@@ -219,7 +220,8 @@ def train(x):
     
     with tf.name_scope("Data"):
         #rand_seed = np.int(np.random.randint(0, 10000, 1))
-        np.random.seed(1998745)
+        rand_seed = 1998745
+        np.random.seed(rand_seed)
         ### Get data. 
         files_wlabel = func.find_files(data_dir, pattern=pattern, withlabel=True)### traverse all the files in the dir, and divide into batches, from
         print("files_wlabel", files_wlabel[0])
@@ -227,7 +229,7 @@ def train(x):
         files, labels = np.array(files_wlabel)[:, 0].astype(np.str), np.array(np.array(files_wlabel)[:, 1]).astype(np.int)
 
         #### split into train and test
-        files_train, files_test, labels_train, labels_test = train_test_split(files, labels, test_size=0.1, random_state=1998745)
+        files_train, files_test, labels_train, labels_test = train_test_split(files, labels, test_size=0.1, random_state=rand_seed)
         num_test = len(files_test)
         num_train = len(files_train)
         print("num_train", num_train, "num_test", num_test)
@@ -254,7 +256,7 @@ def train(x):
     #outputs = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
     #outputs = mod.AggResNet(x, output_channels=[4, 8, 16], num_stacks=[3, 3, 3], cardinality=16, seq_len=height, width=width, channels=channels, filter_size=[7, 1], pool_size=[4, 1], strides=[2, 1], fc=500, num_classes=num_classes)
 
-    outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc1=200) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc1=500) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
@@ -359,7 +361,8 @@ def train(x):
                     acc_epoch_test, loss_epoch_test = evaluate_on_test(sess, epoch, files_test, labels_test, accuracy, cost, ifslide=ifslide, ifnorm=ifnorm, header=header)
                                         
                     print('epoch', epoch, "batch:",batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', acc_epoch_test)
-                    ########################################################
+                ########################################################
+                
             # track training and testing
             loss_total_train.append(loss_epoch_train / (batch + 1))            
             acc_total_train.append(acc_epoch_train / (batch + 1))

@@ -37,7 +37,7 @@ def get_arguments():
                           action="store_true",help="Train on audio - otherwise train on MNIST")
     
 
-    parser.add_argument('--restore_dir', type=str, default=None,
+    parser.add_argument('--restore_from', type=str, default=None,
                         help='Directory in which to restore the model from. '
                         'This creates the new model under the dated directory '
                         'in --logdir_root. '
@@ -222,14 +222,14 @@ def EEG_data(data, pattern='Data*.csv', withlabel=False, num_samples=784, batch_
 
 
 def lr(epoch):
-    learning_rate = 0.0005
-    if epoch > 200:
+    learning_rate = 0.7 * 1e-4
+    if epoch > 400:
         learning_rate *= 0.5e-3
-    elif epoch > 150:
+    elif epoch > 350:
         learning_rate *= 1e-3
-    elif epoch > 100:
+    elif epoch > 200:
         learning_rate *= 1e-2
-    elif epoch > 50:
+    elif epoch > 100:
         learning_rate *= 1e-1
     return learning_rate
 
@@ -238,13 +238,13 @@ def lr(epoch):
 
 # Parameters
 input_dim = 2048#mnist.train.images.shape[1]
-hidden_layer1 = 1024
+hidden_layer1 = 1024   ## best result config
 hidden_layer2 = 256
 z_dim = 128
 
 beta1 = 0.9
-batch_size = 20
-epochs = 250
+batch_size = 64
+epochs = 500
 tensorboard_path = 'tensorboard_plots/'
 noise_length = int(input_dim / 5.)
 data_dir = 'data'     ##'../data/train_data'  ##
@@ -258,7 +258,7 @@ train_batch = EEG_data(train_data, pattern=pattern, withlabel=False, num_samples
 learning_rate = tf.placeholder("float32")
 
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-results_dir= 'results/cpu-batch{}/'.format(batch_size) + datetime + '/'#cnv4_lstm64test
+results_dir= 'results/cpu-batch{}/lr{}-hid{}-{}-z{}-'.format(batch_size, 0.7*0.0001, hidden_layer1, hidden_layer2, z_dim) + datetime + '/'#cnv4_lstm64test
 logdir = results_dir+ "model/"
 
 
@@ -379,8 +379,10 @@ def upsample(inputs, name='depool', factor=[2,1]):
 def train():
 
     args = get_arguments()
-
-    restore_from = args.restore_dir
+    if not args.restore_from:
+        restore_from = logdir
+    else:
+        restore_from = args.restore_from
 
     # Even if we restored the model, we will treat it as new training
     # if the trained model is written into an arbitrary location.
@@ -480,8 +482,9 @@ def train():
                 writer = tf.summary.FileWriter(logdir=tensorboard_path+'/mnist/', graph=sess.graph)
             loss_epoch = []
             loss_test = []
+            
             for epoch in range(epochs):
-                
+                count = 0
                 batch_loss_tot = 0
                 for iteration in range(n_batches):
                     if args.TRAIN_AUDIO:
@@ -493,15 +496,19 @@ def train():
 
                     noisy_batch = batch_x 
                     # Train
-                    summary, _, batch_loss = sess.run([summary_op, train_op, vae_loss], feed_dict={X: batch_x, X_noisy: noisy_batch, learning_rate: lr(epoch)})
+                    sess.run(train_op, feed_dict={X: batch_x, X_noisy: noisy_batch, learning_rate: lr(epoch)})   
+                                        
                     
-                    batch_loss_tot += batch_loss
-
+                    
                     if iteration % 20 == 0:
-                        print("Epoch: {} - step {} - Loss: {:.4f}\n".format(epoch, iteration, batch_loss)) 
-                    writer.add_summary(summary, global_step=iteration)
+                        summary, _, batch_loss = sess.run([summary_op, train_op, vae_loss], feed_dict={X: batch_x, X_noisy: noisy_batch, learning_rate: lr(epoch)})
+                        batch_loss_tot += batch_loss
+                        count += 1
+                        
                     
-                loss_epoch.append(batch_loss_tot / n_batches )
+                    
+                    
+                loss_epoch.append(batch_loss_tot / (count) )
                     
                 if epoch % 1 == 0:
                     rand_ind = np.random.choice(test_data.shape[0], 12)
@@ -509,6 +516,7 @@ def train():
                     loss, recon = sess.run([vae_loss, decoder_output], feed_dict={X: test_data, X_noisy: test_data})
                     recon = sess.run( decoder_output, feed_dict={X: examples_test, X_noisy: examples_test})
                     loss_test.append(loss)
+                    print("Epoch: {} - iteration {} - TrainLoss: {:.4f} - TestLoss: {:.4f}\n".format(epoch, iteration, batch_loss, loss))
 
                 if epoch % 50 == 0:
                     
@@ -537,11 +545,11 @@ def train():
                     #ipdb.set_trace()
                     np.savetxt(results_dir + '/' +'batch_accuracy_per_class.csv', (np.array(loss_epoch),np.array(loss_test) ), header='loss_train,loss_test', delimiter=',', fmt="%10.5f", comments='')
 
-                if epoch % 15 == 0:
+                if epoch % 50 == 0:
                     save_model(saver, sess, logdir, epoch)
                     last_saved_step = epoch
                     
-                                       
+            writer.add_summary(summary, global_step=iteration)
             print("Model Trained!")
 
         except KeyboardInterrupt:
