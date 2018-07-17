@@ -143,40 +143,30 @@ def read_data_save_one_csv(data_dir):
         whole_data.append(data)
     np.savetxt(whole_csv, np.array(whole_data), header='label, flattened data', delimiter=',', fmt="%10.5f", comments='')
 
-def load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, ifnorm=True, num_classes=2):
+def load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, ifnorm=True, num_classes=2, save_name='data', seq_len=10240, width=2):
     '''Keras way of loading data
-    return: x_train, y_train, x_test, y_test
-        x_train: [num_samples, seq_len, channel]
-        y_train: [num_samples, ]  ## int label
-        x_train: [num_samples, seq_len, channel]
-        x_train: [num_samples, ]  ## int label
+    return: x, y, x_test, y_test
+        x: [num_samples, seq_len, channel]
+        y: [num_samples, ]  ## int label
+        x: [num_samples, seq_len, channel]
+        x: [num_samples, ]  ## int label
         '''
     #### Get data
-    files_wlabel_train = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
-    # files_wlabel_test = find_files(data_dir_test, pattern=pattern, withlabel=withlabel )### traverse all the files in the dir, and divide into batches, (name, '1'/'0')
-    # ipdb.set_trace()
-    files_train, labels_train = np.array(files_wlabel_train)[:, 0], np.array(np.array(files_wlabel_train)[:, 1]).astype(np.int)
-    # files_test, labels_test = np.array(files_wlabel_test)[:, 0], np.array(files_wlabel_test)[:, 1].astype(np.int)   ##
-    data_train = np.zeros([len(files_train), 10240, 4])
-    for ind in range(len(files_train)):
-        if ind % 20 == 0:
-            print("train", ind, 'files_train', files_train[ind], 'label', labels_train[ind])
-        data = read_data(files_train[ind], ifnorm=ifnorm)
-        # ipdb.set_trace()
-        data_train[ind] = data
-    ipdb.set_trace()
+    files_wlabel = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the 
+    files, labels = np.array(files_wlabel)[:, 0], np.array(np.array(files_wlabel)[:, 1]).astype(np.int)
 
-    # data_test = []
-    # for ind in range(len(files_test)):
-    #     if ind % 20 == 0:
-    #         print("test", ind, 'files_test', files_test[ind], 'label', labels_test[ind])
-    #     data = read_data(files_test[ind], ifnorm=ifnorm)
-    #     data_test.append(data)
+    datas = np.zeros([len(files), seq_len, width])
+    for ind in range(len(files)):
+        if ind % 100 == 0:
+            print('files', files[ind], 'label', labels[ind])
+        data = read_data(files[ind], ifnorm=ifnorm)
+        datas[ind, :, :] = data
 
     #np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
-    np.savez("ori_aug_20test", data=data_train, label=np.array(labels_train))
-    ####
-    # return np.array(data_train), np.array(labels_train)
+    np.savez(data_dir + "/" + save_name, data=datas, label=np.array(labels))
+    
+    return datas, np.array(labels)
+
 
 #x_train=xx_train, y_train=yy_train, x_test=xx_test, y_test=yy_test
 
@@ -536,7 +526,7 @@ def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'
         
     return:
         activations: activations from each layer'''
-    ipdb.set_trace()
+
     ## get all the viariables with the layername
     with tf.variable_scope(layer_name, reuse=True):
         vars_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
@@ -573,28 +563,47 @@ def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'
     
         #acti = sess.run(activation, feed_dict={example: inputs[ind, :, :]})
         #acti_tot[ind, :] = acti
+def vis_conv_layer_activation(filters, test_samples):
+    
+    channels = filters.shape[-1]
 
+    W_conv1 = weight_variable([5, 5, 1, channels])
+    h_conv1 = tf.nn.relu(conv2d(test_samples, W_conv1))
+    # Produces a tensor of size [-1, img_size, img_size, channels]
+
+    ## Prepare for visualization
+    # Take only convolutions of first image, discard convolutions for other images.
+    V = tf.slice(h_conv1, (0, 0, 0, 0), (1, -1, -1, -1), name='slice_first_input')
+    V = tf.reshape(V, (img_size, img_size, channels))
+
+    # Reorder so the channels are in the first dimension, x and y follow.
+    V = tf.transpose(V, (2, 0, 1))
+    # Bring into shape expected by image_summary
+    V = tf.reshape(V, (-1, img_size, img_size, 1))
+
+    tf.image_summary("first_conv", V)
     
 
-def vis_conv_layer_activation(sess, layer_name, inputs, save_name='results/'):
+#def vis_conv_layer_activation(sess, layer_name, inputs, save_name='results/'):
 
-    with tf.variable_scope(layer_name, reuse=True):
-        vars_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
-    # with tf.variable_scope(layer_name, reuse=True):vars =tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
-    ipdb.set_trace()
-    activation = tf.nn.relu(tf.matmul(inputs, weights) + bias)
-    
-    plt.figure(1, figsize=(20,20))
-    n_columns = 6
-    n_rows = math.ceil(filters / n_columns) + 1
-    for i in range(filters):
-        plt.subplot(n_rows, n_columns, i+1)
-        plt.title('Filter ' + str(i))
-        plt.imshow(units[:,0,0,i], interpolation="nearest", cmap="gray")
+    #with tf.variable_scope(layer_name, reuse=True):
+        #vars_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
+    ## with tf.variable_scope(layer_name, reuse=True):vars =tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
 
-    plt.savefig(save_name + "conv_kernals.pdf", format="pdf")
-    plt.close()
+    #activation = tf.nn.relu(tf.matmul(inputs, weights) + bias)
     
+    #plt.figure(1, figsize=(20,20))
+    #n_columns = 6
+    #n_rows = math.ceil(filters / n_columns) + 1
+    #for i in range(filters):
+        #plt.subplot(n_rows, n_columns, i+1)
+        #plt.title('Filter ' + str(i))
+        #plt.imshow(units[:,0,0,i], interpolation="nearest", cmap="gray")
+
+    #plt.savefig(save_name + "conv_kernals.pdf", format="pdf")
+    #plt.close()
+
+
 def plot_train_samples(samples, true_labels, xlabel='label: 0', ylabel='value', save_name='results/'):
     plt.figure()
     for ii in range(20):
@@ -650,8 +659,24 @@ def plotbhSNE(x_data, label, window=512, num_classes=2, title="t-SNE", save_name
     
 #def plotOnePair(data):
     #'''plot the original data-pair'''
- 
+def plot_bar_chart():
+    plt.figure()
+    barWidth = 0.5
+    r1 = np.arange(6)+0.25
+    #r2 = [x + barWidth for x in r1]
+    plt.bar(r1, mean_new, color='deepskyblue', width=barWidth, edgecolor='white', label='test_accuracy')
+    plt.ylim([0.5, 1.0])
+    plt.hlines(xmin=0, xmax=6, y=0.8, linestyle='--', color='plum', linewidth=2)
+    plt.hlines(xmin=0, xmax=6, y=0.9, linestyle='--', color='plum', linewidth=2)
 
+    #plt.bar(r2, mean_train, color='m', width=barWidth, edgecolor='white', label='train_accuracy')
+    plt.legend()
+    plt.title("Classification accuracy comparison")
+    plt.xticks([r + barWidth for r in range(len(mean_test))], keys_new, rotation=0)
+
+    for ind in range(len(mean_test)):
+        
+        plt.text(r1[ind]+ 0.25*barWidth, mean_new[ind]+0.005, '{0:.3f}'.format(mean_new[ind]), size = 18)
 
 ####################### Data munipulation##########################
 
@@ -665,7 +690,7 @@ def plotbhSNE(x_data, label, window=512, num_classes=2, title="t-SNE", save_name
      ## ipdb.set_trace()
      ## augment_data_with_ar1(filename)
     ## for direc in ddd:
-    #multiprocessing_func("data/train_data")
+    ##multiprocessing_func("data/train_data")
  ##     # get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
  ##     # multiprocessing_func(data_dir)
  ##     # read_from_tfrecord("data/test_files/test_files.tfrecords")
@@ -673,5 +698,5 @@ def plotbhSNE(x_data, label, window=512, num_classes=2, title="t-SNE", save_name
  ##     #read_data_save_one_csv(data_dir_test)
  ##     #filename = "data/train_data/train_data.csv"
  ##     #read_data(filename)
-     ## data_dir = "data/test_data"
-     ## load_and_save_data(data_dir, pattern='*_aug2.csv', withlabel=True, num_classes=2)
+    #data_dir = "data/Whole_Data/validate_data"
+    #load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, num_classes=2)

@@ -205,10 +205,6 @@ def EEG_data(data, pattern='Data*.csv', withlabel=False, num_samples=784, batch_
     '''load train_data, segment into chuncks of input_dim long
     using generator yield batch
     '''
-    
-    #len_train = (data.size // input_dim) * input_dim
-    #data = data.flatten()[0: len_train].reshape(-1, input_dim)  ## num *
-    #ipdb.set_trace()
     while True:
         try:
             for ii in range(len(data)//batch_size):
@@ -222,7 +218,7 @@ def EEG_data(data, pattern='Data*.csv', withlabel=False, num_samples=784, batch_
 
 
 def lr(epoch):
-    learning_rate = 0.7 * 1e-4
+    learning_rate = 1e-4
     if epoch > 400:
         learning_rate *= 0.5e-3
     elif epoch > 350:
@@ -237,19 +233,19 @@ def lr(epoch):
 #mnist = input_data.read_data_sets('../data/MNIST_data', one_hot=True)
 
 # Parameters
-input_dim = 2048#mnist.train.images.shape[1]
-hidden_layer1 = 1024   ## best result config
+input_dim = 1024#mnist.train.images.shape[1]
+hidden_layer1 = 256   ## best result config
 hidden_layer2 = 256
-z_dim = 128
+z_dim = 64
 
 beta1 = 0.9
-batch_size = 64
-epochs = 500
+batch_size = 20
+epochs = 501
 tensorboard_path = 'tensorboard_plots/'
 noise_length = int(input_dim / 5.)
 data_dir = 'data'     ##'../data/train_data'  ##
 pattern='Data*.csv'
-version = 'whole_{}'.format(pattern[0:4])
+version = 'progress_{}'.format(pattern[0:4])
 # get audio data
 #audio_data = CMajorScaleDistribution(input_dim, batch_size)
 train_data, test_data, num_train, num_test = train_test_split_my_data(data_dir, pattern='Data*.csv', withlabel=False)
@@ -258,7 +254,7 @@ train_batch = EEG_data(train_data, pattern=pattern, withlabel=False, num_samples
 learning_rate = tf.placeholder("float32")
 
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-results_dir= 'results/cpu-batch{}/lr{}-hid{}-{}-z{}-'.format(batch_size, 0.7*0.0001, hidden_layer1, hidden_layer2, z_dim) + datetime + '/'#cnv4_lstm64test
+results_dir= 'results/cpu-batch{}/load_add_200F-NF-lr{}-hid{}-{}-z{}-input_dim{}-'.format(batch_size, 0.0001, hidden_layer1, hidden_layer2, z_dim, input_dim) + datetime + '/'#cnv4_lstm64test
 logdir = results_dir+ "model/"
 
 
@@ -529,7 +525,7 @@ def train():
                     axs.flat[1].legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
                     axs.flat[-2].set_xlabel('time / s')
                     axs.flat[-1].set_xlabel('time / s')
-                    plt.savefig(results_dir +'Epoch_{}_recon_ori.png'.format(epoch), format='png')
+                    plt.savefig(results_dir +'Epoch_{}_recon_ori_test.png'.format(epoch), format='png')
                     plt.close()
 
                     plt.figure()
