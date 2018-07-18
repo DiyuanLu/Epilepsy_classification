@@ -50,6 +50,15 @@ def lr(epoch):
         learning_rate *= 1e-1
     return learning_rate
 
+def get_save_every(epoch):
+    save_every = 2
+    if epoch > 30:
+        save_every = 10
+    elif epoch > 9:
+        save_every = 5
+
+    return save_every
+    
 def save_model(saver, sess, logdir, step):
     model_name = 'model.ckpt'
     checkpoint_path = os.path.join(logdir, model_name)
@@ -110,7 +119,7 @@ learning_rate = tf.placeholder("float32")
 post_process = "majority_vote"   #'averaging_window'    ## 
 batch_size = 20  # old: 16     20has a very good result
 num_classes = 2
-epochs = 200
+epochs = 51
              #
 header = None
 train_dir = "data/Whole_data/train_data/"
@@ -118,10 +127,11 @@ test_dir = 'data/Whole_data/test_data/'
 vali_dir = 'data/Whole_data/validate_data/'
 pattern='Data*.csv'
 version = 'whole_{}_DeepConvLSTM'.format(pattern[0:4])# AggResNet  CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
-results_dir= "results/" + version + '/cpu-batch{}/add-noise-slide{}-vote{}-lr0.0005-dropout-'.format(batch_size, num_seg, majority_vote)+ datetime#cnv4_lstm64test
+results_dir= "results/" + version + '/cpu-batch{}/add-noise-slide{}-vote{}-lr0.0005-dropout0.5-group4-'.format(batch_size, num_seg, majority_vote)+ datetime#cnv4_lstm64test
 
 logdir = results_dir+ "/model"
-rand_seed = np.random.choice(200000)
+#rand_seed = np.random.choice(200000)
+rand_seed = 19971478
 print("rand seed", rand_seed)
 
 
@@ -146,7 +156,6 @@ def average_window(prediction, window=4, threshold=0.6):
     result = np.convolve(prediction, filters, 'same')
 
     return result
-
 
     
 def getActivations(layer,stimuli):
@@ -174,7 +183,7 @@ def evaluate_on_test(sess, epoch, files_test, labels_test, accuracy, cost, ifsli
         data_test = data['data']
         labels_test = data['label'] 
     except:
-        data_test, labels_test = func.load_and_save_data(data_dir, pattern=pattern, withlabel=True, ifnorm=True, num_classes=2, save_name=filename)
+        data_test, labels_test = func.load_and_save_data_to_npz(data_dir, pattern=pattern, withlabel=True, ifnorm=True, num_classes=2, save_name=filename)
 
     labels_test_hot =  np.eye((num_classes))[labels_test.astype(int)]
     test_bs = 100
@@ -213,6 +222,8 @@ def add_random_noise(data, prob=0.5, noise_amp=0.02):
     data = data + noise
 
     return data
+
+    
 ### construct the network
 def train(x):
     args = get_arguments()
@@ -252,7 +263,7 @@ def train(x):
     #outputs, out_pre = mod.resi_net(x, hid_dims=[1500, 500], seq_len=height, width=width, channels=channels, num_blocks=5, num_classes = num_classes)
     #outputs = mod.CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], seq_len=height, width=width, channels=channels, num_classes = num_classes)
     #outputs = mod.CNN_new(x, output_channels=[4, 8, 16, 32], num_block=2, num_seg=num_seg, seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
-    outputs, kernels = mod.DeepConvLSTM(x, output_channels=[8, 16, 32], filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], num_lstm=64, group_size=8, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
+    outputs, kernels = mod.DeepConvLSTM(x, output_channels=[8, 16, 32], filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], num_lstm=64, group_size=4, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
     #outputs = mod.RNN(x, num_lstm=128, seq_len=height, width=width, channels=channels, group_size=32, num_classes = num_classes)   ##ok
     #outputs = mod.Dilated_CNN(x, output_channels=16, seq_len=seq_len, width=width, channels=channels, num_classes = num_classes)
     #outputs = mod.Atrous_CNN(x, output_channels_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 16], kernel_size = [5, 1], seq_len=height, width=width, channels=channels, num_classes = 2)
@@ -379,26 +390,22 @@ def train(x):
             loss_total_test.append(loss_epoch_test)            
             acc_total_test.append(acc_epoch_test)
             
-            if epoch % save_every == 0:
+            if epoch % get_save_every(epoch) == 0:
                 save_model(saver, sess, logdir, epoch)
                 last_saved_step = epoch
 
             if epoch == 1:
-                ipdb.set_trace()
+
                 variables = sess.run(kernels, feed_dict={x: data_train, y: labels_train_hot, learning_rate:lr(epoch)})
             
             if epoch % 1 == 0:
                 
-                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=False, window_len=smooth_win_len, xlabel= 'training epochs', ylabel="accuracy", colors=['darkcyan', 'm'], ylim=[0.45, 1.05], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_epoch_{}_seed".format(epoch, rand_seed))
+                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=False, hlines=[0.8, 0.85, 0.9], window_len=smooth_win_len, xlabel= 'training epochs', ylabel="accuracy", colors=['darkcyan', 'm'], ylim=[0.45, 1.05], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_epoch_{}_seed".format(epoch, rand_seed))
 
-                func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, colors=['c', 'violet'], ylim=[0.05, 0.9], xlabel= 'training epochs', ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_epoch_{}_seed".format(epoch, rand_seed))
+                func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, hlines=[], colors=['c', 'violet'], ylim=[0.05, 0.9], xlabel= 'training epochs', ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_epoch_{}_seed".format(epoch, rand_seed))
 
-                func.save_data((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test'+save_header, save_name=results_dir + '/' + datetime + 'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
+                func.save_data_to_csv((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test'+save_header, save_name=results_dir + '/' + datetime + 'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
             
-
-        #np.savetxt('outliers.csv', outliers, fmt='%s', newline= ', ', delimiter=',')
-    #coord.request_stop()
-    #coord.join(threads)
 
 
 if __name__ == "__main__":

@@ -143,7 +143,7 @@ def read_data_save_one_csv(data_dir):
         whole_data.append(data)
     np.savetxt(whole_csv, np.array(whole_data), header='label, flattened data', delimiter=',', fmt="%10.5f", comments='')
 
-def load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, ifnorm=True, num_classes=2, save_name='data', seq_len=10240, width=2):
+def load_and_save_data_to_npz(data_dir, pattern='Data*.csv', withlabel=True, ifnorm=True, num_classes=2, save_name='data', seq_len=10240, width=2):
     '''Keras way of loading data
     return: x, y, x_test, y_test
         x: [num_samples, seq_len, channel]
@@ -178,11 +178,17 @@ def downsampling(filename, ds_factor):
     ds_y =  decimate(y, ds_factor)
     np.savetxt(os.path.dirname(filename) + "/ds_" + np.str(ds_factor)  + os.path.basename(filename) , zip(ds_x, ds_y), delimiter=',', fmt="%10.5f")
 
-def save_data(data, header='data', save_name="save_data"):
+def save_data_to_csv(data, header='data', save_name="save_data"):
     '''save data into a .csv file
     data: list of data that need to be saved, (x1, x2, x3...)
     header: String that will be written at the beginning of the file.'''
     np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
+
+
+
+        
+
+    
 
 def load_data(data_dir):
     '''Load variables' data from pre-saved .csv file
@@ -272,14 +278,14 @@ def lag_ar(data, window=1024, lag=1) :
     return:
     the alg1 correlation coefficient given the lag and window size"""
     data = np.array(data)
-    lag_1 = np.zeros((data.size))
+    lag_ar = np.zeros((data.size))
     for ii in range(data.size-window):  ###1000-200
         ar1 = np.corrcoef(np.array([data[ii:window+ii], data[ii+lag:window+ii+lag]]))
         if ii == 0:
-            lag_1[0:window+1] = ar1[0, 1]
+            lag_ar[0:window+1] = ar1[0, 1]
         else:
-            lag_1[window+ii] = ar1[0, 1]
-    return lag_1
+            lag_ar[window+ii] = ar1[0, 1]
+    return lag_ar
 
 def filter_loss(data, threshold = 20):
     ''' get all the data loss(value doesn't change from previous time. ')
@@ -334,20 +340,7 @@ def split_filter_data_with_long_loss(data, accept_loss_threshold=50, accept_data
             data_segs.append(data_seg[0:data_seg.size-data_seg.size%accept_data_len])  ## discard the data at the end
 
     return np.array(data_segs)
-'''('files_wlabel', ('data/train_data/Data_N_Ind_1_750/Data_N_Ind0300.csv', '0'))
-('resi', 0, 'layer', 0, 'net', TensorShape([Dimension(None), Dimension(1024), Dimension(2), Dimension(8)]))
-('resi', 0, 'layer', 1, 'net', TensorShape([Dimension(None), Dimension(512), Dimension(2), Dimension(16)]))
-('resi', 0, 'layer', 2, 'net', TensorShape([Dimension(None), Dimension(256), Dimension(2), Dimension(32)]))
-('resi net ', TensorShape([Dimension(None), Dimension(128), Dimension(2), Dimension(32)]))
-('resi', 1, 'layer', 0, 'net', TensorShape([Dimension(None), Dimension(128), Dimension(2), Dimension(8)]))
-('resi', 1, 'layer', 1, 'net', TensorShape([Dimension(None), Dimension(64), Dimension(2), Dimension(16)]))
-('resi', 1, 'layer', 2, 'net', TensorShape([Dimension(None), Dimension(32), Dimension(2), Dimension(32)]))
-('resi net ', TensorShape([Dimension(None), Dimension(16), Dimension(2), Dimension(32)]))
-('resi', 2, 'layer', 0, 'net', TensorShape([Dimension(None), Dimension(16), Dimension(2), Dimension(8)]))
-('resi', 2, 'layer', 1, 'net', TensorShape([Dimension(None), Dimension(16), Dimension(2), Dimension(16)]))
-('resi', 2, 'layer', 2, 'net', TensorShape([Dimension(None), Dimension(16), Dimension(2), Dimension(32)]))
-('resi net ', TensorShape([Dimension(None), Dimension(16), Dimension(2), Dimension(32)]))
-'''
+
 
 def linear_interpolation(data):
     """Helper to handle indices and logical indices of repeated data points(data loss points).
@@ -368,22 +361,6 @@ def linear_interpolation(data):
 
     return data
 
-def ApEn(U, m, r):
-    '''Pincus
-    [13] suggested that m be 1 or 2, and r be
-    0.1SD to 0.25SD ( SD isthe standard deviation of the
-    data),'''
-    def _maxdist(x_i, x_j):
-        return max([abs(ua - va) for ua, va in zip(x_i, x_j)])
-
-    def _phi(m):
-        x = [[U[j] for j in range(i, i + m - 1 + 1)] for i in range(N - m + 1)]
-        C = [len([1 for x_j in x if _maxdist(x_i, x_j) <= r]) / (N - m + 1.0) for x_i in x]
-        return (N - m + 1.0)**(-1) * sum(np.log(C))
-
-    N = len(U)
-
-    return abs(_phi(m + 1) - _phi(m))
     
 ###################### plots ##########################
 def PCA_plot(pca_fit):
@@ -443,7 +420,7 @@ def plot_learning_curve(train_scores, test_scores , num_trial=1, title="Learning
     plt.savefig(save_name, format="pdf")
     plt.close()
 
-def plot_smooth_shadow_curve(datas, ifsmooth=False, ylim=[0, 1.05], window_len=25, colors=['darkcyan'], xlabel='training batches / 20', ylabel='accuracy', title='Loss during training', labels='accuracy_train', save_name="loss"):
+def plot_smooth_shadow_curve(datas, ifsmooth=False, hlines=[0.8, 0.85], ylim=[0, 1.05], window_len=25, colors=['darkcyan'], xlabel='training batches / 20', ylabel='accuracy', title='Loss during training', labels='accuracy_train', save_name="loss"):
     '''plot a smooth version of noisy data with mean and std as shadow
     data: a list of variables values, shape: (batches, )
     color: list of prefered colors
@@ -460,12 +437,13 @@ def plot_smooth_shadow_curve(datas, ifsmooth=False, ylim=[0, 1.05], window_len=2
             plt.grid()
             plt.fill_between(np.arange(sizes), data_smooth - data_std, data_smooth + data_std, alpha=0.5, color=fill_colors[ind])
             plt.plot(np.arange(sizes), data_smooth, '-', linewidth=2, color=colors[ind], label=labels[ind])
+        for hline in hlines:
+            plt.hlines(hline, 0, np.arange(sizes), linestyle='--', colors='salmon',  linewidth=1.5)
     else:
         for ind, data in enumerate(datas) :
             plt.plot(data, '*-', linewidth=2, color=colors[ind], label=labels[ind])
-            plt.hlines(0.8, 0, np.array(data).size, linestyle='--', colors='salmon',  linewidth=1.5)
-            plt.hlines(0.85, 0, np.array(data).size, linestyle='--', colors='salmon', linewidth=1.5)
-            plt.hlines(0.9, 0, np.array(data).size, linestyle='--', colors='salmon', linewidth=1.5)
+        for hline in hlines:
+            plt.hlines(hline, 0, np.array(data).size, linestyle='--', colors='salmon',  linewidth=1.5)
             
     plt.ylabel(ylabel)
     plt.xlabel(xlabel)
@@ -475,19 +453,6 @@ def plot_smooth_shadow_curve(datas, ifsmooth=False, ylim=[0, 1.05], window_len=2
     plt.savefig(save_name+'.png', format="png")
     plt.close()
 
-def plotdata(data, color='darkorchid', xlabel="training time", ylabel="loss", save_name="save"):
-    '''
-    data: 1D array '''
-    plt.figure()
-    plt.plot(np.arange(data.size)/512.0, data, color)
-    plt.xlabel(xlabel)
-    plt.ylabel(ylabel)
-    if ylabel == 'accuracy':
-        plt.ylim([0.0, 1.05])
-    elif ylabel == 'loss':
-        plt.ylim([0.0, 1.0])
-    plt.savefig(save_name + "_{}".format(ylabel))
-    plt.close()
 
 def plot_test_samples(samples, true_labels, pred_labels, save_name='results/'):
     plt.figure()
@@ -503,18 +468,6 @@ def plot_test_samples(samples, true_labels, pred_labels, save_name='results/'):
     plt.savefig(save_name + 'samples_test.pdf', format = 'pdf')
     plt.close()
 
-
-def vis_layer_activation(layer_name, inputs, save_name='results/'):
-    '''
-    tensor_name: tensor_name of a specific layer
-    return:
-        activtion of the layer given the inputs and reuse the weights
-    '''
-    with tf.variable_scope(layer_name, reuse=True):
-        vars_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
-
-    weights = vars_lsit[0]
-    biass = vars_lsit[1]
 
         
 def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'):
@@ -563,46 +516,6 @@ def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'
     
         #acti = sess.run(activation, feed_dict={example: inputs[ind, :, :]})
         #acti_tot[ind, :] = acti
-def vis_conv_layer_activation(filters, test_samples):
-    
-    channels = filters.shape[-1]
-
-    W_conv1 = weight_variable([5, 5, 1, channels])
-    h_conv1 = tf.nn.relu(conv2d(test_samples, W_conv1))
-    # Produces a tensor of size [-1, img_size, img_size, channels]
-
-    ## Prepare for visualization
-    # Take only convolutions of first image, discard convolutions for other images.
-    V = tf.slice(h_conv1, (0, 0, 0, 0), (1, -1, -1, -1), name='slice_first_input')
-    V = tf.reshape(V, (img_size, img_size, channels))
-
-    # Reorder so the channels are in the first dimension, x and y follow.
-    V = tf.transpose(V, (2, 0, 1))
-    # Bring into shape expected by image_summary
-    V = tf.reshape(V, (-1, img_size, img_size, 1))
-
-    tf.image_summary("first_conv", V)
-    
-
-#def vis_conv_layer_activation(sess, layer_name, inputs, save_name='results/'):
-
-    #with tf.variable_scope(layer_name, reuse=True):
-        #vars_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
-    ## with tf.variable_scope(layer_name, reuse=True):vars =tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
-
-    #activation = tf.nn.relu(tf.matmul(inputs, weights) + bias)
-    
-    #plt.figure(1, figsize=(20,20))
-    #n_columns = 6
-    #n_rows = math.ceil(filters / n_columns) + 1
-    #for i in range(filters):
-        #plt.subplot(n_rows, n_columns, i+1)
-        #plt.title('Filter ' + str(i))
-        #plt.imshow(units[:,0,0,i], interpolation="nearest", cmap="gray")
-
-    #plt.savefig(save_name + "conv_kernals.pdf", format="pdf")
-    #plt.close()
-
 
 def plot_train_samples(samples, true_labels, xlabel='label: 0', ylabel='value', save_name='results/'):
     plt.figure()
@@ -700,3 +613,53 @@ def plot_bar_chart():
  ##     #read_data(filename)
     #data_dir = "data/Whole_Data/validate_data"
     #load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, num_classes=2)
+
+
+def put_kernels_on_grid (kernel, grid_Y, grid_X, pad = 1):
+
+    '''Visualize conv. features as an image (mostly for the 1st layer).
+    Place kernel into a grid, with some paddings between adjacent filters.
+
+    Args:
+      kernel:            tensor of shape [Y, X, NumChannels, NumKernels]
+      (grid_Y, grid_X):  shape of the grid. Require: NumKernels == grid_Y * grid_X
+                           User is responsible of how to break into two multiples.
+      pad:               number of black pixels around each filter (between them)
+
+    Return:
+      Tensor of shape [(Y+2*pad)*grid_Y, (X+2*pad)*grid_X, NumChannels, 1].
+    '''
+
+    x_min = tf.reduce_min(kernel)
+    x_max = tf.reduce_max(kernel)
+
+    kernel1 = (kernel - x_min) / (x_max - x_min)
+
+    # pad X and Y
+    x1 = tf.pad(kernel1, tf.constant( [[pad,pad],[pad, pad],[0,0],[0,0]] ), mode = 'CONSTANT')
+
+    # X and Y dimensions, w.r.t. padding
+    Y = kernel1.get_shape()[0] + 2 * pad
+    X = kernel1.get_shape()[1] + 2 * pad
+
+    channels = kernel1.get_shape()[2]
+
+    # put NumKernels to the 1st dimension
+    x2 = tf.transpose(x1, (3, 0, 1, 2))
+    # organize grid on Y axis
+    x3 = tf.reshape(x2, tf.pack([grid_X, Y * grid_Y, X, channels])) #3
+
+    # switch X and Y axes
+    x4 = tf.transpose(x3, (0, 2, 1, 3))
+    # organize grid on X axis
+    x5 = tf.reshape(x4, tf.pack([1, X * grid_X, Y * grid_Y, channels])) #3
+
+    # back to normal order (not combining with the next step for clarity)
+    x6 = tf.transpose(x5, (2, 1, 3, 0))
+
+    # to tf.image_summary order [batch_size, height, width, channels],
+    #   where in this case batch_size == 1
+    x7 = tf.transpose(x6, (3, 0, 1, 2))
+
+    # scale to [0, 255] and convert to uint8
+    return tf.image.convert_image_dtype(x7, dtype = tf.uint8) 
