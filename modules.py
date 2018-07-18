@@ -570,37 +570,19 @@ def DeepConvLSTM(x, output_channels=[8, 16, 32, 64], filter_size=[3, 3], pool_si
     for layer_id, num_outputs in enumerate(output_channels):
         with tf.variable_scope("block_{}".format(layer_id)) as layer_scope:
             net = tf.layers.conv2d(
-                                                inputs = net,
-                                                filters = num_outputs,
-                                                kernel_size = filter_size,
-                                                padding = 'same',
-                                                activation=tf.nn.relu
-                                                )
+                                    inputs = net,
+                                    filters = num_outputs,
+                                    kernel_size = filter_size,
+                                    padding = 'same',
+                                    activation=tf.nn.relu
+                                    )
             print(net.name, net.shape.as_list())
             tf.summary.histogram(net.name, net)
             #net = tf.layers.dropout(net, rate=0.25)
 
             net = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides, padding='SAME')
-            net = tf.layers.dropout(net, rate=0.5)
-            #net = tf.layers.batch_normalization(net)
-            #print('pool{}_1x2'.format(layer_id), net.shape.as_list())
-            #net = tf.layers.batch_normalization(net, center = True, scale = True)
-
-            #net = tf.layers.conv2d(
-                                                #inputs = net,
-                                                #filters = num_outputs,
-                                                #kernel_size = filter_size,
-                                                #padding = 'same',
-                                                #activation=tf.nn.relu
-                                                #)
-            #tf.summary.histogram(net.name, net)
-            ##variable = get_variables_from_graph(net, 'kernel')
-            #print('conv{}_2'.format(layer_id), net.shape.as_list())
+            net = tf.layers.dropout(net, rate=0.4)
             
-            #net = tf.layers.max_pooling2d(inputs=net, pool_size=[2, 1], strides=[2, 1])
-            ##net = tf.layers.batch_normalization(net, center = True, scale = True)
-            #net = tf.layers.dropout(net, rate=0.5)
-            ##net = tf.layers.batch_normalization(net, center = True, scale = True)
             print("before LSTM", net.shape.as_list())
 
     with tf.variable_scope("reshape4rnn") as layer_scope:

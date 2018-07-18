@@ -8,6 +8,7 @@ import ipdb
 import keras
 import os
 import matplotlib.pyplot as plt
+import functions as func
 # import fnmatch
 # import random
 from mpl_toolkits.mplot3d import Axes3D
@@ -103,23 +104,26 @@ def plotTSNE(data, label, window=512, num_classes=2, title="t-SNE", save_name='/
 
 '''BB entropy features'''
 ## load focal features, nonfocal features, shuffle
-data_dir = 'entropy'
+#data_dir = 'entropy'
+#save_name = "results/"
+#num_files = 3750 * 2
+#num_classes = 2
+#batch_size = 300
+#entropies = np.ones((num_files, 6)) ### label, ae_entropy, sp_entropy, re_entropy
+#labels = np.ones((num_files))
+#entropies[0:3750, 0:2] = pd.read_csv(data_dir+'/ae-focal.csv', header=None)
+#entropies[0:3750, 2:4] = pd.read_csv(data_dir+'/se-focal.csv', header=None)
+#entropies[0:3750, 4:6] = pd.read_csv(data_dir+'/re-focal.csv', header=None)
+
+### non focal
+#entropies[3750:, 0:2] = pd.read_csv(data_dir+'/ae-nonfocal.csv', header=None)
+#entropies[3750:, 2:4] = pd.read_csv(data_dir+'/se-nonfocal.csv', header=None)
+#entropies[3750:, 4:6] = pd.read_csv(data_dir+'/re-nonfocal.csv', header=None)
+#labels[3750:] = 0
+
+'''PSD'''
+data_dir = 'data/PSD/'
 save_name = "results/"
-num_files = 3750 * 2
-num_classes = 2
-batch_size = 300
-entropies = np.ones((num_files, 6)) ### label, ae_entropy, sp_entropy, re_entropy
-labels = np.ones((num_files))
-entropies[0:3750, 0:2] = pd.read_csv(data_dir+'/ae-focal.csv', header=None)
-entropies[0:3750, 2:4] = pd.read_csv(data_dir+'/se-focal.csv', header=None)
-entropies[0:3750, 4:6] = pd.read_csv(data_dir+'/re-focal.csv', header=None)
-
-## non focal
-entropies[3750:, 0:2] = pd.read_csv(data_dir+'/ae-nonfocal.csv', header=None)
-entropies[3750:, 2:4] = pd.read_csv(data_dir+'/se-nonfocal.csv', header=None)
-entropies[3750:, 4:6] = pd.read_csv(data_dir+'/re-nonfocal.csv', header=None)
-labels[3750:] = 0
-
 #kfolds = 10
 #skf = StratifiedKFold(n_splits=kfolds, shuffle=True)   ## keep the class ratio balance in each fold
 #skf.get_n_splits(entropies)
@@ -128,7 +132,13 @@ labels[3750:] = 0
     ## print("TRAIN:", train_index, "TEST:", test_index)
     #x_train, x_test = entropies[train_index], entropies[test_index]
     #y_train, y_test = labels[train_index], labels[test_index]
-x_train, x_test, y_train, y_test = train_test_split(entropies, labels, random_state=42)
+
+
+data_train = func.read_data(data_dir+'band_PSD_train.csv', header=0, ifnorm=True)
+y_train, x_train = data_train[:, 0], data_train[:, 1:]
+data_test = func.read_data(data_dir+'band_PSD_test.csv', header=0, ifnorm=True)
+y_test, x_test = data_test[:, 0], data_test[:, 1:]
+#x_train, x_test, y_train, y_test = train_test_split(entropies, labels, random_state=42)
 y_train_hot = keras.utils.to_categorical(y_train, num_classes)
 y_test_hot = keras.utils.to_categorical(y_test, num_classes)
 print("Done, x_train.shape", x_train.shape)
@@ -136,41 +146,41 @@ print("Done, x_train.shape", x_train.shape)
 
 
 #plotTSNE(entropies, labels, num_classes=3, window=0, save_name='')
-fig = plt.figure()
-ax = fig.add_subplot(111, projection='3d')
-#ipdb.set_trace()
-ax.scatter(x_train[:, 0], x_train[:, 2],  x_train[:, 4], c=y_train, cmap=plt.cm.get_cmap("cool", num_classes), alpha=0.5)
-plt.legend()
-ax.set_xlabel("Approximate entropy")
-ax.set_ylabel("Sample entropy")
-ax.set_zlabel("Reyni entropy")
-ax.set_title('3D scatter of original entropy data')
+#fig = plt.figure()
+#ax = fig.add_subplot(111, projection='3d')
+##ipdb.set_trace()
+#ax.scatter(x_train[:, 0], x_train[:, 2],  x_train[:, 4], c=y_train, cmap=plt.cm.get_cmap("cool", num_classes), alpha=0.5)
+#plt.legend()
+#ax.set_xlabel("Approximate entropy")
+#ax.set_ylabel("Sample entropy")
+#ax.set_zlabel("Reyni entropy")
+#ax.set_title('3D scatter of original entropy data')
 
 #plt.colorbar()
 #ax.scatter(entropies[3750:, 0], entropies[3750:, 2],  entropies[3750:, 4], c='c', marker='*')
 
 ### plot entropy bar chart
-mean_focal = np.mean(entropies[0:3750, :], axis=0)
-mean_nonfocal = np.mean(entropies[3750:, :], axis=0)
-std_focal = np.std(entropies[0:3750, :], axis=0)
-std_nonfocal = np.std(entropies[3750:, :], axis=0)
+#mean_focal = np.mean(entropies[0:3750, :], axis=0)
+#mean_nonfocal = np.mean(entropies[3750:, :], axis=0)
+#std_focal = np.std(entropies[0:3750, :], axis=0)
+#std_nonfocal = np.std(entropies[3750:, :], axis=0)
 
-print("mean_focal", mean_focal, "mean_nonfocal", mean_nonfocal)
-barWidth = 0.3
-r1 = np.arange(6)
-r2 = [x + barWidth for x in r1]
+#print("mean_focal", mean_focal, "mean_nonfocal", mean_nonfocal)
+#barWidth = 0.3
+#r1 = np.arange(6)
+#r2 = [x + barWidth for x in r1]
 
-plt.figure()
-plt.bar(r1, mean_focal, yerr = std_focal, color='c', width=barWidth, edgecolor='white', label='focal')
-plt.bar(r2, mean_nonfocal, yerr=std_nonfocal, color='m', width=barWidth, edgecolor='white', label='non-focal')
-plt.legend()
-plt.title("Entropy statistics in focal and non-focal")
-plt.xticks([r + barWidth for r in range(len(mean_focal))], ['ae_1', 'ae_2','se_1', 'se_2', 're_1', 're_2'])
-plt.savefig('results/Entropies.png', format='png')
-plt.close()
+#plt.figure()
+#plt.bar(r1, mean_focal, yerr = std_focal, color='c', width=barWidth, edgecolor='white', label='focal')
+#plt.bar(r2, mean_nonfocal, yerr=std_nonfocal, color='m', width=barWidth, edgecolor='white', label='non-focal')
+#plt.legend()
+#plt.title("Entropy statistics in focal and non-focal")
+#plt.xticks([r + barWidth for r in range(len(mean_focal))], ['ae_1', 'ae_2','se_1', 'se_2', 're_1', 're_2'])
+#plt.savefig('results/Entropies.png', format='png')
+#plt.close()
 
 ## split training and testing
-ipdb.set_trace()
+#ipdb.set_trace()
 '''cnn Data reshape'''
 # xData = np.expand_dims(xData, 3)
 # nTrain = math.ceil(nData*0.7)
@@ -236,7 +246,7 @@ model.compile(loss="categorical_crossentropy",
               metrics=['accuracy'])
 
 model.fit(x_train, y_train_hot,
-          epochs=50,
+          epochs=100,
           shuffle = True, 
           batch_size=batch_size,
           validation_data = (x_test, y_test_hot))

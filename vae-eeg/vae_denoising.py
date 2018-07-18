@@ -23,6 +23,8 @@ Authors:    Dario Cazzani
 https://towardsdatascience.com/generating-digits-and-sounds-with-artificial-neural-nets-ca1270d8445f
 """
 
+'''python3 vae_denoising.py --restore_dir=results/cpu-batch64/2018-07-03T12-00-41-training_20_perfect/model/
+'''
 def get_arguments():
     def _str_to_bool(s):
         """Convert string to bool (in argparse context)."""
@@ -233,10 +235,10 @@ def lr(epoch):
 #mnist = input_data.read_data_sets('../data/MNIST_data', one_hot=True)
 
 # Parameters
-input_dim = 1024#mnist.train.images.shape[1]
-hidden_layer1 = 256   ## best result config
-hidden_layer2 = 256
-z_dim = 64
+input_dim = 2048#mnist.train.images.shape[1]   perfect-2048
+hidden_layer1 = 1024   ## best result config   perfect-1024
+hidden_layer2 = 256   ###                      perfect-256
+z_dim = 128    ###perfect-128
 
 beta1 = 0.9
 batch_size = 20
@@ -254,7 +256,7 @@ train_batch = EEG_data(train_data, pattern=pattern, withlabel=False, num_samples
 learning_rate = tf.placeholder("float32")
 
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
-results_dir= 'results/cpu-batch{}/load_add_200F-NF-lr{}-hid{}-{}-z{}-input_dim{}-'.format(batch_size, 0.0001, hidden_layer1, hidden_layer2, z_dim, input_dim) + datetime + '/'#cnv4_lstm64test
+results_dir= 'results/cpu-batch{}/load_add20--lr{}-hid{}-{}-z{}-input_dim{}-'.format(batch_size, 0.0001, hidden_layer1, hidden_layer2, z_dim, input_dim) + datetime + '/'#cnv4_lstm64test
 logdir = results_dir+ "model/"
 
 
@@ -405,6 +407,7 @@ def train():
         z_sample = sample_z(z_mu, z_logvar)
         #ipdb.set_trace()
         decoder_output, logits = decoder(z_sample)
+        tf.summary.activation('decode', decoder_output)
         
         if args.TRAIN_AUDIO:
             # audio input "de-normalization"
@@ -492,17 +495,13 @@ def train():
 
                     noisy_batch = batch_x 
                     # Train
-                    sess.run(train_op, feed_dict={X: batch_x, X_noisy: noisy_batch, learning_rate: lr(epoch)})   
-                                        
+                    sess.run(train_op, feed_dict={X: batch_x, X_noisy: noisy_batch, learning_rate: lr(epoch)})                                           
                     
                     
                     if iteration % 20 == 0:
                         summary, _, batch_loss = sess.run([summary_op, train_op, vae_loss], feed_dict={X: batch_x, X_noisy: noisy_batch, learning_rate: lr(epoch)})
                         batch_loss_tot += batch_loss
-                        count += 1
-                        
-                    
-                    
+                        count += 1                   
                     
                 loss_epoch.append(batch_loss_tot / (count) )
                     

@@ -1,10 +1,28 @@
-#### THis is a script to load model and contimue training/ plotting
+#### THis is a script to save custom data into tfrecords
+### Inspired by http://machinelearninguru.com/deep_learning/data_preparation/tfrecord/tfrecord.html
 import numpy as np
-import ipdb
 import sys
-import functions as func
+import os
+import fnmatch
+import random 
 import tensorflow as tf
 
+
+def find_files(directory, pattern='Data*.txt', withlabel=True):
+    '''fine all the files in one directory and assign '1'/'0' to F or N files'''
+    files = []
+    for root, dirnames, filenames in os.walk(directory):
+        for filename in fnmatch.filter(filenames, pattern):
+            if withlabel:
+                if 'Data_F' in filename:
+                    label = '1'
+                elif 'Data_N' in filename:
+                    label = '0'
+                files.append((os.path.join(root, filename), label))
+            else:  # only get names
+                files.append(os.path.join(root, filename))
+    random.shuffle(files)   # randomly shuffle the files
+    return files
 
 
 def save_data_to_TFRecord(data_dir, num_per_file=500, pattern='Data*.csv', prefix='train'):
@@ -25,7 +43,7 @@ def save_data_to_TFRecord(data_dir, num_per_file=500, pattern='Data*.csv', prefi
 
     
     
-    files_wlabel = func.find_files(data_dir, pattern=pattern, withlabel=True)### traverse all the
+    files_wlabel = find_files(data_dir, pattern=pattern, withlabel=True)### traverse all the
 
     files, labels = np.array(files_wlabel)[:, 0].astype(np.str), np.array(np.array(files_wlabel)[:, 1]).astype(np.int)
 
@@ -59,54 +77,60 @@ def save_data_to_TFRecord(data_dir, num_per_file=500, pattern='Data*.csv', prefi
 
 
 data_dir = 'data/Whole_data/validate_data/'
-save_data_to_TFRecord(data_dir, num_per_file=500, pattern='Data*.csv', prefix='val')
-#files = func.find_files(data_dir, pattern='*.tfrecords', withlabel=False)
+#save_data_to_TFRecord(data_dir, num_per_file=500, pattern='Data*.csv', prefix='val')
+files = 
 
 '''Load the tfrecords '''
 with tf.Session() as sess:
     feature = {'data': tf.FixedLenFeature([], tf.string),
     'label': tf.FixedLenFeature([], tf.int64)}
-     Create a list of filenames and pass it to a queue
+    # Create a list of filenames and pass it to a queue
     filename_queue = tf.train.string_input_producer(files, num_epochs=10)   ### the files have to a list
 
-     Define a reader and read the next record
+    # Define a reader and read the next record
     reader = tf.TFRecordReader()
     _, serialized_example = reader.read(filename_queue)
 
-     Decode the record read by the reader
+    # Decode the record read by the reader
     features = tf.parse_single_example(serialized_example, features=feature)
-     Convert the image data from string back to the numbers
+    # Convert the image data from string back to the numbers
     data = tf.decode_raw(features['data'], tf.float64)
     
-     Cast label data into int32
+    # Cast label data into int32
     labels = tf.cast(features['label'], tf.int32)   ### the feature name should be exactly the same as you save them
     
-    ## define the shape
+    ### define the shape
     data = tf.reshape(data, [10240, 2, 1])
-     Creates batches by randomly shuffling tensors
+    # Creates batches by randomly shuffling tensors
     images, labels = tf.train.shuffle_batch([data, labels], batch_size=15, capacity=50000, num_threads=1, min_after_dequeue=10000)
 
-     Initialize all global and local variables
+    # Initialize all global and local variables
     init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
     sess.run(init_op)
-     Create a coordinator and run all QueueRunner objects
-    ipdb.set_trace()
+    # Create a coordinator and run all QueueRunner objects
+    #ipdb.set_trace()
     coord = tf.train.Coordinator()
     threads = tf.train.start_queue_runners(coord=coord)
     for batch_index in range(10):
         img, lbl = sess.run([images, labels])
         print('label: ', lbl, 'data shape: ', img.shape)
-        for j in range(6):
-            plt.subplot(2, 3, j+1)
-            plt.plot(img[j,:,0])
-            #plt.title('cat' if lbl[j]==0 else 'dog')
-        plt.show()
-     Stop the threads
+        #for j in range(6):
+            #plt.subplot(2, 3, j+1)
+            #plt.plot(img[j,:,0])
+            ##plt.title('cat' if lbl[j]==0 else 'dog')
+        #plt.show()
+    # Stop the threads
     coord.request_stop()
     
-     Wait for threads to stop
+    # Wait for threads to stop
     coord.join(threads)
     sess.close()
 
 
-    
+'''
+Error:
+    RandomShuffleQueue '_1_shuffle_batch/random_shuffle_queue' is closed and has insufficient elements
+Solution:
+    Please set the num_epochs in function
+        filename_queue = tf.train.string_input_producer(files, num_epochs=10)
+'''

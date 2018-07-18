@@ -92,13 +92,54 @@ def read_data(filename, header=None, ifnorm=True, start=0, width=2 ):
         data: 2d array [seq_len, channel]'''
 
     data = pd.read_csv(filename, header=header, nrows=None)
-    data = data.values[:, start:start+width]   ### get data without row_index
+    data = data.values   ### get data without row_index
     if ifnorm:   ### 2 * 10240  normalize the data into [0.0, 1.0]]
         data_norm = zscore(data)
         data = data_norm
     #data = np.squeeze(data)   ## shape from [1, seq_len] --> [seq_len,]
     return data
 
+
+def get_tfrecords_next_batch(data_dir, pattern='*.tfrecords', seq_len=10240, width=2, channels=1, epochs=50, batch_size=20, withlabel=False):
+
+    '''Get presaved tfrecords files and enqueue into batches
+    Param:
+        data_dir: data directory
+
+    Return:
+        data: batch_size*seq*width*channel
+        label: int label'''
+        
+    files = find_files(data_dir, pattern=pattern, withlabel=withlabel)
+
+    feature = {'data': tf.FixedLenFeature([], tf.string),
+                'label': tf.FixedLenFeature([], tf.int64)}
+    
+    ### Create a list of filenames and pass it to a queue
+    filename_queue = tf.train.string_input_producer(files, num_epochs=epochs)   ### the files have to a list
+
+    ###Define a reader and read the next record
+    reader = tf.TFRecordReader()
+    _, serialized_example = reader.read(filename_queue)
+
+    #### Decode the record read by the reader
+    features = tf.parse_single_example(serialized_example, features=feature)
+    ####Convert the image data from string back to the numbers
+    data = tf.decode_raw(features['data'], tf.float64)
+    
+    ### Cast label data into int32
+    labels = tf.cast(features['label'], tf.int32)   ### the feature name should be exactly the same as you save them
+    
+    ## define the shape
+    data = tf.reshape(data, [seq_len, width, channels])
+    ### Creates batches by randomly shuffling tensors
+    batch_data, batch_labels = tf.train.shuffle_batch([data, labels], batch_size=batch_size, capacity=50000, num_threads=32, min_after_dequeue=10000)
+
+    return batch_data, batch_labels
+
+
+
+    
 def augment_data_with_ar1(filename):
     '''Read data from file and compute lag1 autocorrelation and then save (original data, ar1)
     fix value pad the first window size autocorrelation'''
@@ -185,8 +226,7 @@ def save_data_to_csv(data, header='data', save_name="save_data"):
     np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
 
 
-
-        
+    
 
     
 

@@ -120,14 +120,14 @@ post_process = "majority_vote"   #'averaging_window'    ##
 batch_size = 20  # old: 16     20has a very good result
 num_classes = 2
 epochs = 51
-             #
+num_train = 6000#
 header = None
 train_dir = "data/Whole_data/train_data/"
 test_dir = 'data/Whole_data/test_data/'
 vali_dir = 'data/Whole_data/validate_data/'
 pattern='Data*.csv'
 version = 'whole_{}_DeepConvLSTM'.format(pattern[0:4])# AggResNet  CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
-results_dir= "results/" + version + '/cpu-batch{}/add-noise-slide{}-vote{}-lr0.0005-dropout0.5-group4-'.format(batch_size, num_seg, majority_vote)+ datetime#cnv4_lstm64test
+results_dir= "results/" + version + '/cpu-batch{}/add-noise-CNN-4-8-16-dropout0.4-group4-'.format(batch_size, num_seg, majority_vote)+ datetime#cnv4_lstm64test
 
 logdir = results_dir+ "/model"
 #rand_seed = np.random.choice(200000)
@@ -173,7 +173,7 @@ def plotNNFilter(units):
         plt.imshow(units[0,:,:,i], interpolation="nearest", cmap="gray")
 
 
-def evaluate_on_test(sess, epoch, files_test, labels_test, accuracy, cost, ifslide=False, ifnorm=True, header=None):
+def evaluate_on_test(sess, epoch, accuracy, cost, ifslide=False, ifnorm=True, header=None):
     acc_epoch_test = 0
     loss_epoch_test = 0
     data_dir = test_dir
@@ -239,7 +239,8 @@ def train(x):
     
     with tf.name_scope("Data"):
         #rand_seed = np.int(np.random.randint(0, 10000, 1))
-        
+        rand_seed = 1998745
+        np.random.seed(rand_seed)
         ### Get data. 
         files_wlabel = func.find_files(train_dir, pattern=pattern, withlabel=True)### traverse all the files in the dir, and divide into batches, from
         print("files_wlabel", files_wlabel[0])
@@ -247,23 +248,20 @@ def train(x):
         files, labels = np.array(files_wlabel)[:, 0].astype(np.str), np.array(np.array(files_wlabel)[:, 1]).astype(np.int)
 
         #### split into train and test
-        files_train, files_test, labels_train, labels_test = train_test_split(files, labels, test_size=0.1, random_state=rand_seed)
-        num_test = len(files_test)
-        num_train = len(files_train)
-        print("num_train", num_train, "num_test", num_test)
+        
+        print("num_train", labels.shape)
         
         ### tensorflow dataset
-        dataset_train = tf.data.Dataset.from_tensor_slices((files_train, labels_train)).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        dataset_train = tf.data.Dataset.from_tensor_slices((files, labels)).repeat().batch(batch_size).shuffle(buffer_size=10000)
         iter = dataset_train.make_initializable_iterator()
-        ele = iter.get_next()   #you get the filename
-        
+        ele = iter.get_next() #you get the filename
             
     ################# Constructing the network ###########################
     #outputs = mod.fc_net(x, hid_dims=[500, 300, 100], num_classes = num_classes)   ##
     #outputs, out_pre = mod.resi_net(x, hid_dims=[1500, 500], seq_len=height, width=width, channels=channels, num_blocks=5, num_classes = num_classes)
     #outputs = mod.CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], seq_len=height, width=width, channels=channels, num_classes = num_classes)
     #outputs = mod.CNN_new(x, output_channels=[4, 8, 16, 32], num_block=2, num_seg=num_seg, seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
-    outputs, kernels = mod.DeepConvLSTM(x, output_channels=[8, 16, 32], filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], num_lstm=64, group_size=4, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
+    outputs, kernels = mod.DeepConvLSTM(x, output_channels=[4, 8, 16], filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], num_lstm=64, group_size=4, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
     #outputs = mod.RNN(x, num_lstm=128, seq_len=height, width=width, channels=channels, group_size=32, num_classes = num_classes)   ##ok
     #outputs = mod.Dilated_CNN(x, output_channels=16, seq_len=seq_len, width=width, channels=channels, num_classes = num_classes)
     #outputs = mod.Atrous_CNN(x, output_channels_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 16], kernel_size = [5, 1], seq_len=height, width=width, channels=channels, num_classes = 2)
@@ -328,11 +326,12 @@ def train(x):
                   "the previous model.")
             raise
             
+        init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+        sess.run(init_op)
+        
         #coord = tf.train.Coordinator()
-        #threads = tf.train.start_queue_runners(sess=sess, coord=coord)
-        tf.set_random_seed(rand_seed)
-        sess.run(iter.initializer)   # every trial restart training
-        sess.run(tf.global_variables_initializer())
+        #threads = tf.train.start_queue_runners(coord=coord)
+        sess.run(iter.initializer) # every trial restart training
         print('random number', np.random.randint(0, 50, 10))
         acc_total_train = []
         acc_total_test = []
@@ -348,16 +347,15 @@ def train(x):
         for epoch in range(epochs):
             acc_epoch_train = 0
             loss_epoch_train = 0
-            for batch in range(num_train//batch_size):#####
-                
+            for batch in range(num_train//batch_size):#####                
                 save_name = results_dir + '/' + "step{}_".format( batch)
+                
                 filename_train, labels_train =  sess.run(ele)   # names, 1s/0s the filename is bytes object!!! TODO
                 data_train = np.zeros([batch_size, seq_len, width])
                 filename_train = filename_train.astype(np.str)
                 for ind in range(len(filename_train)):
                     data = func.read_data(filename_train[ind],  header=header, ifnorm=True, start=start, width=width)
                     data_train[ind, :, :] = data
-                    
                 ## data augmentation
                 data_train = add_random_noise(data_train, prob=0.5, noise_amp=0.02)
 
@@ -379,7 +377,7 @@ def train(x):
                 loss_epoch_train += c
                 ###################### test ######################################
                 if batch % test_every == 0:
-                    acc_epoch_test, loss_epoch_test = evaluate_on_test(sess, epoch, files_test, labels_test, accuracy, cost, ifslide=ifslide, ifnorm=ifnorm, header=header)
+                    acc_epoch_test, loss_epoch_test = evaluate_on_test(sess, epoch, accuracy, cost, ifslide=ifslide, ifnorm=ifnorm, header=header)
                                         
                     print('epoch', epoch, "batch:",batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', acc_epoch_test)
                 ########################################################
@@ -405,7 +403,11 @@ def train(x):
                 func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, hlines=[], colors=['c', 'violet'], ylim=[0.05, 0.9], xlabel= 'training epochs', ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_epoch_{}_seed".format(epoch, rand_seed))
 
                 func.save_data_to_csv((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test'+save_header, save_name=results_dir + '/' + datetime + 'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
-            
+    #Stop the threads
+    coord.request_stop()
+    
+    #Wait for threads to stop
+    coord.join(threads)
 
 
 if __name__ == "__main__":
