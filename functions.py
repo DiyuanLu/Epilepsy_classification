@@ -15,11 +15,11 @@ from functools import partial      ### for multiprocessing
 import matplotlib.pyplot as plt
 import ipdb
 import random
-import matplotlib.pylab as pylab
 from scipy.stats import zscore
 import pandas as pd
 
 # import scipy.stats as stats
+import matplotlib.pylab as pylab
 params = {'legend.fontsize': 12,
           'figure.figsize': (10, 8.8),
          'axes.labelsize': 16,
@@ -403,28 +403,6 @@ def linear_interpolation(data):
 
     
 ###################### plots ##########################
-def PCA_plot(pca_fit):
-    traces = []
-    for name in ('Focal', 'Non-focal'):
-        trace = Scatter(
-            x=pca_fit[y==name,0],
-            y=pca_fit[y==name,1],
-            mode='markers',
-            name=name,
-            marker=Marker(
-                size=12,
-                line=Line(
-                    color='rgba(217, 217, 217, 0.14)',
-                    width=0.5),
-                opacity=0.8))
-        traces.append(trace)
-
-        data = Data(traces)
-        layout = Layout(xaxis=XAxis(title='PC1', showline=False),
-                        yaxis=YAxis(title='PC2', showline=False))
-        fig = plt.figure(data=data, layout=layout)
-        plt.plot(fig)
-
 def plot_learning_curve(train_scores, test_scores , num_trial=1, title="Learning curve", save_name="learning curve"):
     '''plot smooth learning curve
     train_scores: n_samples * n_features
@@ -592,24 +570,63 @@ def plot_BB_training_examples(samples, true_labels, save_name='results/'):
         plt.savefig(save_name + "vis_train_data{}.png".format(ii), format="png")
         plt.close()
 
-def plotbhSNE(x_data, label, window=512, num_classes=2, title="t-SNE", save_name='/results'):
+
+def plotTSNE(data, labels, num_classes=2, n_components=3, title="t-SNE", target_names = ['non_focal', 'focal'], save_name='/results', postfix='band_PSD'):
+    '''tsne clustering on data
+    param:
+        data: 2d array shape: batch*seq_len*width
+        label: 1d array, int labels'''
+
+    from tsne import bh_sne
+    tsne_results = bh_sne(data, d=n_components)
+    #tsne_results = TSNE(n_components=3, random_state=99).fit_transform(data)
     
-    '''tSNE visualize the original setmented data
-    Param:
-        x_data: shape(batch, seq_len, width)''' #classify based on the activity, x_data = stateX
-    # perform t-SNE embedding--2D plot
-    vis_data = bh_sne(x_data, pca_d=3)  #steps*2
-    # plot the result
-    vis_x = vis_data[:, 0]
-    vis_y = vis_data[:, 1]
-    ##plot the result
-    plt.scatter(vis_x, vis_y, c=label, cmap=plt.cm.get_cmap("cool", num_classes))   ##
-    plt.title("t-SNE in orginal {}-long segments".format(window))
-    plt.colorbar(ticks=range(num_classes))
-    plt.clim(-0.5, num_classes-0.5)
-    plt.savefig(save_name+"t-SNE-{}.png".format(window), format='png')
+    #colors =plt.cm.get_cmap("cool", num_classes)
+    cmap=['orchid', 'fuchsia',  'indigo', 'aqua', 'darkturquoise', 'mediumseagreen', 'darkgreen','slateblue', 'royalblue', 'cornflowerblue', 'navy',  'mediumaquamarine', 'lightcoral']
+    colors = np.random.choice(cmap, num_classes)
+
+    fig = plt.figure()
+    if n_components == 3:
+        vis_x = tsne_results[:, 0]
+        vis_y = tsne_results[:, 1]
+        vis_z = tsne_results[:, 2]
+        ax = fig.add_subplot(111, projection='3d')        
+        for i, target_name in zip(colors, np.arange(num_classes), target_names):
+            ax.scatter(tsne_results[labels == i, 0], tsne_results[labels == i, 1], tsne_results[labels == i, 2], color=color, alpha=.8,label=target_name)
+    elif n_components == 2:
+        vis_x = tsne_results[:, 0]
+        vis_y = tsne_results[:, 1]
+        ax = fig.add_subplot(111)
+        for color, i, target_name in zip(colors, np.arange(num_classes), target_names):
+            ax.scatter(tsne_results[labels == i, 0], tsne_results[labels == i, 1], color=color, alpha=.8, label=target_name)###lw=2,
+    plt.legend(loc='best', shadow=False, scatterpoints=1)
+    #plt.scatter(vis_x, vis_y, c=label, cmap=plt.cm.get_cmap("cool", num_classes))   ##
+    plt.title("t-SNE-{}".format(postfix))
+    plt.savefig(save_name+"t-SNE-{}.png".format(postfix), format='png')
     plt.close()
-    
+
+
+def plot_PCA(data, labels, n_components=3, num_classes=2, colors = ['navy', 'turquoise'], target_names = ['non-focal', 'focal'], title='PCA', postfix='band_PSD'):
+    from sklearn.decomposition import PCA
+    pca = PCA(n_components=n_components)
+    pca_results = pca.fit(data).transform(data)
+    cmap=['orchid', 'fuchsia',  'indigo', 'aqua', 'darkturquoise', 'mediumseagreen', 'darkgreen','slateblue', 'royalblue', 'cornflowerblue', 'navy',  'mediumaquamarine', 'lightcoral']
+    colors = np.random.choice(cmap, num_classes)]
+    lw = 2
+    fig = plt.figure()
+    if n_components == 3:
+        ax = fig.add_subplot(111, projection='3d')
+        for color, i, target_name in zip(colors, np.arange(num_classes), target_names):
+            ax.scatter(pca_results[labels == i, 0], pca_results[labels == i, 1], pca_results[labels == i, 2], color=color, alpha=.8, lw=lw, label=target_name)
+    elif n_components == 2:
+        ax = fig.add_subplot(111)
+        for color, i, target_name in zip(colors, np.arange(num_classes), target_names):
+            ax.scatter(pca_results[labels == i, 0], pca_results[labels == i, 1], color=color, alpha=.8, lw=lw, label=target_name)
+
+    plt.legend(loc='best', shadow=False, scatterpoints=1)
+    plt.title("PCA on {}".format(postfix))
+    plt.savefig(save_name+"PCA-on {}.png".format(postfix), format='png')
+    plt.close()
 #def plotOnePair(data):
     #'''plot the original data-pair'''
 def plot_bar_chart():

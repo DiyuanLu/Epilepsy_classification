@@ -403,11 +403,11 @@ def train(x):
                 func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, hlines=[], colors=['c', 'violet'], ylim=[0.05, 0.9], xlabel= 'training epochs', ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_epoch_{}_seed".format(epoch, rand_seed))
 
                 func.save_data_to_csv((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test'+save_header, save_name=results_dir + '/' + datetime + 'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
-    #Stop the threads
-    coord.request_stop()
+    ##Stop the threads
+    #coord.request_stop()
     
-    #Wait for threads to stop
-    coord.join(threads)
+    ##Wait for threads to stop
+    #coord.join(threads)
 
 
 if __name__ == "__main__":

@@ -16,7 +16,15 @@ import pandas as pd
 from sklearn.model_selection import KFold, StratifiedKFold
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.model_selection import train_test_split
-
+import matplotlib.pylab as pylab
+params = {'legend.fontsize': 12,
+          'figure.figsize': (10, 8.8),
+         'axes.labelsize': 16,
+         #'weight' : 'bold',
+         'axes.titlesize':16,
+         'xtick.labelsize':12,
+         'ytick.labelsize':12}
+pylab.rcParams.update(params)
 
 def find_files(directory, pattern='Data*.csv', withlabel=True):
     '''fine all the files in one directory and assign '1'/'0' to F or N files'''
@@ -34,25 +42,43 @@ def find_files(directory, pattern='Data*.csv', withlabel=True):
     random.shuffle(files)   # randomly shuffle the files
     return files
 
-def plotTSNE(data, label, window=512, num_classes=2, title="t-SNE", save_name='/results'):
+def plotTSNE(data, labels, num_classes=2, n_components=3, title="t-SNE", save_name='/results', postfix='band_PSD'):
     '''tsne clustering on data
     param:
         data: 2d array shape: batch*seq_len*width
         label: 1d array, int labels'''
-    from sklearn.manifold import TSNE as TSNE
-    tsne = TSNE(n_components=2, perplexity=40.0)
-    tsne_results = tsne.fit_transform(data)
-    vis_x = tsne_results[:, 0]
-    vis_y = tsne_results[:, 1]
 
-    plt.figure()
-    plt.scatter(vis_x, vis_y, c=label, cmap=plt.cm.get_cmap("cool", num_classes))   ##
-    plt.title("t-SNE in orginal {}-long segments".format(window))
-    plt.colorbar(ticks=range(num_classes))
-    plt.clim(-0.5, num_classes-0.5)
-    plt.savefig(save_name+"t-SNE-{}.png".format(window), format='png')
-    plt.close()
+    from tsne import bh_sne
+    tsne_results = bh_sne(data, d=n_components)
+    #tsne_results = TSNE(n_components=3, random_state=99).fit_transform(data)
     
+    #colors =plt.cm.get_cmap("cool", num_classes)
+    colors = ['c', 'm']
+    target_names = ['non_focal', 'focal']
+    fig = plt.figure()
+    if n_components == 3:
+        vis_x = tsne_results[:, 0]
+        vis_y = tsne_results[:, 1]
+        vis_z = tsne_results[:, 2]
+        ax = fig.add_subplot(111, projection='3d')
+        
+        for i, target_name in zip(colors, np.arange(num_classes), target_names):
+            ax.scatter(tsne_results[labels == i, 0], tsne_results[labels == i, 1], tsne_results[labels == i, 2], color=color, alpha=.8,label=target_name)
+    elif n_components == 2:
+        vis_x = tsne_results[:, 0]
+        vis_y = tsne_results[:, 1]
+        ax = fig.add_subplot(111)
+        for color, i, target_name in zip(colors, np.arange(num_classes), target_names):
+            ax.scatter(tsne_results[labels == i, 0], tsne_results[labels == i, 1], color=color, alpha=.8, label=target_name)###lw=2,
+    plt.legend(loc='best', shadow=False, scatterpoints=1)
+    #plt.scatter(vis_x, vis_y, c=label, cmap=plt.cm.get_cmap("cool", num_classes))   ##
+    plt.title("t-SNE-{}".format(postfix))
+    plt.savefig(save_name+"t-SNE-{}.png".format(postfix), format='png')
+    plt.close()
+
+
+batch_size = 64
+epochs = 20
 '''MNIST'''
 #batch_size = 128
 #num_classes = 10
@@ -122,30 +148,23 @@ def plotTSNE(data, label, window=512, num_classes=2, title="t-SNE", save_name='/
 #labels[3750:] = 0
 
 '''PSD'''
+num_classes = 2
 data_dir = 'data/PSD/'
 save_name = "results/"
-#kfolds = 10
-#skf = StratifiedKFold(n_splits=kfolds, shuffle=True)   ## keep the class ratio balance in each fold
-#skf.get_n_splits(entropies)
-## entropies = np.expand_dims(entropies, 3)
-#for train_index, test_index in skf.split(entropies, labels):
-    ## print("TRAIN:", train_index, "TEST:", test_index)
-    #x_train, x_test = entropies[train_index], entropies[test_index]
-    #y_train, y_test = labels[train_index], labels[test_index]
+feature_width = 12
+data_train = pd.read_csv(data_dir+'band_PSD_train.csv', header=0).values
+y_train, x_train = data_train[:, 0].astype(np.int), data_train[:, 1:]
 
+data_test = pd.read_csv(data_dir+'band_PSD_test.csv', header=0).values
+y_test, x_test = data_test[:, 0].astype(np.int), data_test[:, 1:]
 
-data_train = func.read_data(data_dir+'band_PSD_train.csv', header=0, ifnorm=True)
-y_train, x_train = data_train[:, 0], data_train[:, 1:]
-data_test = func.read_data(data_dir+'band_PSD_test.csv', header=0, ifnorm=True)
-y_test, x_test = data_test[:, 0], data_test[:, 1:]
-#x_train, x_test, y_train, y_test = train_test_split(entropies, labels, random_state=42)
 y_train_hot = keras.utils.to_categorical(y_train, num_classes)
 y_test_hot = keras.utils.to_categorical(y_test, num_classes)
 print("Done, x_train.shape", x_train.shape)
 
+#ipdb.set_trace()
+#plotTSNE(x_train, y_train, num_classes=num_classes, n_components=2, save_name='./')
 
-
-#plotTSNE(entropies, labels, num_classes=3, window=0, save_name='')
 #fig = plt.figure()
 #ax = fig.add_subplot(111, projection='3d')
 ##ipdb.set_trace()
@@ -203,12 +222,11 @@ print("Done, x_train.shape", x_train.shape)
 model = Sequential()
 # model.add(Flatten())
 #model.add(Dense(500, input_shape=(10239,2), activation='relu'))
-model.add(Dense(100, input_shape=(6,), activation='relu'))
-model.add(Dropout(0.55))
+model.add(Dense(100, input_shape=(feature_width,), activation='relu'))
+model.add(Dropout(0.5))
 # model.add(Dense(300, activation='relu'))
 # model.add(Dropout(0.75))
-model.add(Dense(10, activation='relu'))
-model.add(Dropout(0.75))
+model.add(Dropout(0.5))
 model.add(Dense(num_classes, activation='softmax'))
 
 '''CNN MODEL'''
@@ -242,11 +260,11 @@ model.add(Dense(num_classes, activation='softmax'))
 #model.add(Dense(num_classes, activation='softmax'))
 
 model.compile(loss="categorical_crossentropy",
-              optimizer=keras.optimizers.Adam(lr=0.001),
+              optimizer=keras.optimizers.Adam(lr=0.0005),
               metrics=['accuracy'])
 
 model.fit(x_train, y_train_hot,
-          epochs=100,
+          epochs=3000,
           shuffle = True, 
           batch_size=batch_size,
           validation_data = (x_test, y_test_hot))
