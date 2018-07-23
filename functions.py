@@ -297,8 +297,11 @@ def slide_and_segment(data_x, num_seg=5, window=128, stride=64):
         expand_y : shape(num_seq*num_segment, num_classes)
         '''
     assert len(data_x.shape) == 3
+    if data_x.shape[1] % num_seg == 0:   ## if it's int segment
+        num_seg = (data_x.shape[1] - np.int(window)) // stride + 1
+    else:
+        num_seg = (data_x.shape[1] - np.int(window)) // stride
         
-    num_seg = (data_x.shape[1] - np.int(window)) // stride + 1
     expand_data = np.zeros((data_x.shape[0], num_seg, window, data_x.shape[-1]))
     # ipdb.set_trace()
     for ii in range(data_x.shape[0]):
@@ -611,7 +614,7 @@ def plot_PCA(data, labels, n_components=3, num_classes=2, colors = ['navy', 'tur
     pca = PCA(n_components=n_components)
     pca_results = pca.fit(data).transform(data)
     cmap=['orchid', 'fuchsia',  'indigo', 'aqua', 'darkturquoise', 'mediumseagreen', 'darkgreen','slateblue', 'royalblue', 'cornflowerblue', 'navy',  'mediumaquamarine', 'lightcoral']
-    colors = np.random.choice(cmap, num_classes)]
+    colors = np.random.choice(cmap, num_classes)
     lw = 2
     fig = plt.figure()
     if n_components == 3:

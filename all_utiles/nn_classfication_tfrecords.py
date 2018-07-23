@@ -14,7 +14,6 @@ import pickle
 from sklearn.model_selection import train_test_split
 import argparse
 import sys
-import json
 
 
 def get_arguments():
@@ -91,36 +90,29 @@ def load_model(saver, sess, save_dir):
         print(" No checkpoint found.")
         return None
         
-
+#ipdb.set_trace()
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 100
 save_every = 2
 test_every = 20
 smooth_win_len = 20
-ori_len = 10240
 seq_len = 10240  #1280   ## 
-start = 0
-ifnorm = True
-ifslide = True  #False    ##
-ifcrop = False   #True
-crop_len = 10000
-if ifcrop:
-    seq_len = crop_len
 height = seq_len
 width = 2  # with augmentation 2   ### data width
 channels = 1
-
+start = 0
+ifnorm = True
+ifslide = False    #True  ##
 if ifslide:
-    seg_len = 86           ## 86 is from the correlation distribution result
     majority_vote = True
-    num_seg = height // seg_len   
+    num_seg = 5   ## number of shorter segments you want to divide the original long sequence with a sliding window
     ### use a 5s window slide over the 20s recording and do classification on segments, and then do a average vote
     height = np.int(height / num_seg)
-    x = tf.placeholder("float32", [None, height, width])  #20s recording width of each recording is 1, there are 2 channels
+    x = tf.placeholder("float32", [None, height, width, channels])  #20s recording width of each recording is 1, there are 2 channels
 else:
     majority_vote = False
     num_seg = 1
-    x = tf.placeholder("float32", [None, height, width])
+    x = tf.placeholder("float32", [None, height, width, channels])
 y = tf.placeholder("float32")
 learning_rate = tf.placeholder("float32")
 
@@ -134,13 +126,10 @@ train_dir = "data/Whole_data/train_data/"
 test_dir = 'data/Whole_data/test_data/'
 vali_dir = 'data/Whole_data/validate_data/'
 pattern='Data*.csv'
+version = 'whole_{}_DeepConvLSTM'.format(pattern[0:4])# AggResNet  CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
+results_dir= "results/" + version + '/cpu-batch{}/add-noise-slide{}-vote{}-lr0.0005-dropout0.5-group4-'.format(batch_size, num_seg, majority_vote)+ datetime#cnv4_lstm64test
 
-mod_params = './module_params.json'
-with open(mod_params, 'r') as f:
-    params = json.load(f)
-
-version = 'whole_{}_RNN_Tutorial'.format(pattern[0:4])# AggResNet CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
-
+logdir = results_dir+ "/model"
 #rand_seed = np.random.choice(200000)
 rand_seed = 19971478
 print("rand seed", rand_seed)
@@ -184,7 +173,7 @@ def plotNNFilter(units):
         plt.imshow(units[0,:,:,i], interpolation="nearest", cmap="gray")
 
 
-def evaluate_on_test(sess, epoch, accuracy, cost, ifslide=False, ifnorm=True, crop_len=10000, header=None):
+def evaluate_on_test(sess, epoch, accuracy, cost, ifslide=False, ifnorm=True, header=None):
     acc_epoch_test = 0
     loss_epoch_test = 0
     data_dir = test_dir
@@ -197,13 +186,6 @@ def evaluate_on_test(sess, epoch, accuracy, cost, ifslide=False, ifnorm=True, cr
         data_test, labels_test = func.load_and_save_data_to_npz(data_dir, pattern=pattern, withlabel=True, ifnorm=True, num_classes=2, save_name=filename)
 
     labels_test_hot =  np.eye((num_classes))[labels_test.astype(int)]
-
-    ### randomly crop a crop_len
-    if crop_len < data_test.shape[1]:
-        data_test = random_crop(data_test, crop_len=crop_len)
-    ### add random noise
-    data_test = add_random_noise(data_test, prob=0.5, noise_amp=0.01)
-                
     test_bs = 100
     for jj in range(len(labels_test) // test_bs):
         if ifslide:
@@ -241,62 +223,9 @@ def add_random_noise(data, prob=0.5, noise_amp=0.02):
 
     return data
 
-
-def random_crop(data, crop_len=10000):
-    '''given a target seq len, randomly crop the data'''
-    choice = data.shape[1] - crop_len
-    start = np.random.choice(choice, data.shape[0])
-    crop_data = np.array([data[i, start[i]:start[i]+crop_len] for i in range(data.shape[0])])
-
-    return crop_data
     
 ### construct the network
 def train(x):
-        
-    with tf.name_scope("Data"):
-        #rand_seed = np.int(np.random.randint(0, 10000, 1))
-        rand_seed = 1998745
-        np.random.seed(rand_seed)
-        ### Get data. 
-        files_wlabel = func.find_files(train_dir, pattern=pattern, withlabel=True)### traverse all the files in the dir, and divide into batches, from
-
-        files, labels = np.array(files_wlabel)[:, 0].astype(np.str), np.array(np.array(files_wlabel)[:, 1]).astype(np.int)
-
-        #### split into train and test
-        
-        print("num_train", labels.shape)
-        
-        ### tensorflow dataset
-        dataset_train = tf.data.Dataset.from_tensor_slices((files, labels)).repeat().batch(batch_size).shuffle(buffer_size=10000)
-        iter = dataset_train.make_initializable_iterator()
-        ele = iter.get_next() #you get the filename
-            
-    ################# Constructing the network ###########################
-    #outputs = mod.fc_net(x, hid_dims=[500, 300, 100], num_classes = num_classes)   ##
-    #outputs, out_pre = mod.resi_net(x, hid_dims=[1500, 500], seq_len=height, width=width, channels=channels, num_blocks=5, num_classes = num_classes)
-    #outputs = mod.CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], seq_len=height, width=width, channels=channels, num_classes = num_classes)
-    #outputs = mod.CNN_new(x, output_channels=[4, 8, 16, 32], num_block=2, num_seg=num_seg, seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
-    #outputs, kernels = mod.DeepConvLSTM(x, output_channels=[4, 8, 8], filter_size=[11, 1], pool_size=[4, 1], strides=[2, 1], num_lstm=64, group_size=4, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
-    #outputs = mod.RNN(x, num_lstm=128, seq_len=height, width=width, channels=channels, group_size=32, num_classes = num_classes)   ##ok
-    #outputs = mod.Dilated_CNN(x, output_channels=16, seq_len=seq_len, width=width, channels=channels, num_classes = num_classes)
-    #outputs = mod.Atrous_CNN(x, output_channels_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 16], kernel_size = [5, 1], seq_len=height, width=width, channels=channels, num_classes = 2)
-    #outputs = mod.PyramidPoolingConv(x, output_channels=[2, 4, 8, 16, 32], filter_size=7, dilation_rate=[2, 8, 16, 32], seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
-    #outputs = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
-    #outputs = mod.Inception_complex(x, output_channels=[4, 8, 16, 32], filter_size=[5, 9], num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
-    #outputs = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
-    #outputs, pre = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], fc=[500], num_classes=num_classes)
-
-    #outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[250]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
-    #outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[250]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
-    #outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
-    outputs = mod.RNN_Tutorial(x, num_lstm=[100, 100], seq_len=height, width=width, channels=channels, fc=[100, 100], num_classes = num_classes)
-    #ipdb.set_trace()
-    #### specify logdir
-    results_dir= "results/" + version + '/cpu-batch{}/'+ datetime
-    #cnv4_lstm64testcrop10000-add-noise-CNN-dropout0.3-'.format(batch_size, num_seg, majority_vote)
-    logdir = results_dir+ "/model"
-
-    ### Load model if specify
     args = get_arguments()
     
     if not args.restore_from:
@@ -308,32 +237,52 @@ def train(x):
     # if the trained model is written into an arbitrary location.
     is_overwritten_training = logdir != restore_from
     
+    with tf.name_scope("Data"):
+        data, labels = func.get_tfrecords_next_batch(train_dir, pattern='*.tfrecords', seq_len=height, width=width, channels=channels, epochs=epochs, batch_size=batch_size)
+            
+    ################# Constructing the network ###########################
+    #outputs = mod.fc_net(x, hid_dims=[500, 300, 100], num_classes = num_classes)   ##
+    #outputs, out_pre = mod.resi_net(x, hid_dims=[1500, 500], seq_len=height, width=width, channels=channels, num_blocks=5, num_classes = num_classes)
+    #outputs = mod.CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], seq_len=height, width=width, channels=channels, num_classes = num_classes)
+    #outputs = mod.CNN_new(x, output_channels=[4, 8, 16, 32], num_block=2, num_seg=num_seg, seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
+    outputs, kernels = mod.DeepConvLSTM(x, output_channels=[8, 16, 32], filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], num_lstm=64, group_size=4, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
+    #outputs = mod.RNN(x, num_lstm=128, seq_len=height, width=width, channels=channels, group_size=32, num_classes = num_classes)   ##ok
+    #outputs = mod.Dilated_CNN(x, output_channels=16, seq_len=seq_len, width=width, channels=channels, num_classes = num_classes)
+    #outputs = mod.Atrous_CNN(x, output_channels_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 16], kernel_size = [5, 1], seq_len=height, width=width, channels=channels, num_classes = 2)
+    #outputs = mod.PyramidPoolingConv(x, output_channels=[2, 4, 8, 16, 32], filter_size=7, dilation_rate=[2, 8, 16, 32], seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
+    #outputs = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
+    #outputs = mod.Inception_complex(x, output_channels=[4, 8, 16, 32], filter_size=[5, 9], num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
+    #outputs = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
+    #outputs, pre = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], fc=[500], num_classes=num_classes)
 
+    #outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[250]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    #outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[250]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    #outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
+
+    save_header = 'mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200]'
     with tf.name_scope("loss"):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name="cost")
     with tf.name_scope("performance"):
         predictions = tf.argmax(outputs, 1)
         if post_process == 'majority_vote':
             #ipdb.set_trace()
-            predictions = postprocess(predictions, num_seg=num_seg, Threshold=0.5)
-            labels = postprocess(tf.argmax(y, 1), num_seg=num_seg, Threshold=0.5)
-            correct = tf.equal(predictions, labels , name="correct")
+            post_pred = postprocess(predictions, num_seg=num_seg, Threshold=0.5)
+            post_label = postprocess(tf.argmax(y, 1), num_seg=num_seg, Threshold=0.5)
+            correct = tf.equal(post_pred, post_label , name="correct")
             accuracy = tf.reduce_mean(tf.cast(correct, "float32"), name="accuracy")
         if post_process == 'averaging_window':
-            predictions = postprocess(predictions, num_seg=num_seg, Threshold=0.5)
-            labels = average_window(tf.argmax(y, 1), window=4, threshold=0.6)
-            correct = tf.equal(predictions, labels, name="correct")
+            post_pred = postprocess(predictions, num_seg=num_seg, Threshold=0.5)
+            post_label = average_window(predictions, window=4, threshold=0.6)
+            correct = tf.equal(post_pred, post_label , name="correct")
             accuracy = tf.reduce_mean(tf.cast(correct, "float32"), name="accuracy")
         else:
             correct = tf.equal(predictions, tf.argmax(y, 1), name="correct")##
             accuracy = tf.reduce_mean(tf.cast(correct, "float32"), name="accuracy")
-            
-        area_under_curve, _ = tf.metrics.auc(tf.argmax(y, 1), outputs, num_classes, name='accuracy_per_class')
+            #accuracy_per_class = tf.metrics.mean_per_class_accuracy(predictions, tf.argmax(y, 1), num_classes, name='accuracy_per_class')
 
         tf.summary.scalar('loss', cost)
         tf.summary.scalar('accuracy', accuracy)
-        tf.summary.scalar('auc', area_under_curve)
-        
+
     optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,
                                     beta1=0.9,
                                    beta2=0.999,
@@ -364,9 +313,9 @@ def train(x):
         init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
         sess.run(init_op)
         
-        #coord = tf.train.Coordinator()
-        #threads = tf.train.start_queue_runners(coord=coord)
-        sess.run(iter.initializer) # every trial restart training
+        coord = tf.train.Coordinator()
+        threads = tf.train.start_queue_runners(coord=coord)
+        
         print('random number', np.random.randint(0, 50, 10))
         acc_total_train = []
         acc_total_test = []
@@ -382,23 +331,13 @@ def train(x):
         for epoch in range(epochs):
             acc_epoch_train = 0
             loss_epoch_train = 0
-            for batch in range(num_train//batch_size):#####                
-                save_name = results_dir + '/' + "step{}_".format( batch)
+            for batch in range(num_train//batch_size):#####
                 
-                filename_train, labels_train =  sess.run(ele)   # names, 1s/0s the filename is bytes object!!! TODO
-                data_train = np.zeros([batch_size, 10240, width])
-                filename_train = filename_train.astype(np.str)
-                for ind in range(len(filename_train)):
-                    data = func.read_data(filename_train[ind],  header=header, ifnorm=True, start=start, width=width)
-                    data_train[ind, :, :] = data
-                    
-                ## data augmentation
-                ### randomly crop a target_len
-                if crop_len < ori_len:
-                    data_train = random_crop(data_train, crop_len=crop_len)
+                save_name = results_dir + '/' + "step{}_".format( batch)
+                data_train, labels_train = sess.run([data, labels])
 
-                ### add random noise
-                #data_train = add_random_noise(data_train, prob=0.5, noise_amp=0.01)
+                ## data augmentation
+                data_train = add_random_noise(data_train, prob=0.5, noise_amp=0.02)
 
                 labels_train_hot =  np.eye((num_classes))[labels_train.astype(int)] # get one-hot lable
 
@@ -410,7 +349,7 @@ def train(x):
                     data_train = data_slide
                     labels_train_hot = np.repeat(labels_train_hot,  num_seg, axis=0).reshape(-1, labels_train_hot.shape[1])
                 #ipdb.set_trace()
-                _, summary, acc, c, auc = sess.run([optimizer, summaries, accuracy, cost, area_under_curve], feed_dict={x: data_train, y: labels_train_hot, learning_rate:lr(epoch)})# , options=options, run_metadata=run_metadata We collect profiling infos for each step.
+                _, summary, acc, c = sess.run([optimizer, summaries, accuracy, cost], feed_dict={x: data_train, y: labels_train_hot, learning_rate:lr(epoch)})# , options=options, run_metadata=run_metadata We collect profiling infos for each step.
                 writer.add_summary(summary, epoch*(num_train//batch_size)+batch)##
 
                 ## accumulate the acc and cost later to average
@@ -418,9 +357,9 @@ def train(x):
                 loss_epoch_train += c
                 ###################### test ######################################
                 if batch % test_every == 0:
-                    acc_epoch_test, loss_epoch_test = evaluate_on_test(sess, epoch, accuracy, cost, crop_len=crop_len, ifslide=ifslide, ifnorm=ifnorm, header=header)
+                    acc_epoch_test, loss_epoch_test = evaluate_on_test(sess, epoch, files_test, labels_test, accuracy, cost, ifslide=ifslide, ifnorm=ifnorm, header=header)
                                         
-                    print('epoch', epoch, "batch:",batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', acc_epoch_test, 'auc', auc)
+                    print('epoch', epoch, "batch:",batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', acc_epoch_test)
                 ########################################################
                 
             # track training and testing
@@ -433,8 +372,9 @@ def train(x):
                 save_model(saver, sess, logdir, epoch)
                 last_saved_step = epoch
 
-            #if epoch == 1:
-                #variables = sess.run(kernels, feed_dict={x: data_train, y: labels_train_hot, learning_rate:lr(epoch)})
+            if epoch == 1:
+
+                variables = sess.run(kernels, feed_dict={x: data_train, y: labels_train_hot, learning_rate:lr(epoch)})
             
             if epoch % 1 == 0:
                 
@@ -442,12 +382,12 @@ def train(x):
 
                 func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, hlines=[], colors=['c', 'violet'], ylim=[0.05, 0.9], xlabel= 'training epochs', ylabel="loss", title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ "/loss_epoch_{}_seed".format(epoch, rand_seed))
 
-                func.save_data_to_csv((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test', save_name=results_dir + '/' + datetime + 'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
-    ##Stop the threads
-    #coord.request_stop()
+                func.save_data_to_csv((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test'+save_header, save_name=results_dir + '/' + datetime + 'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
+    #Stop the threads
+    coord.request_stop()
     
-    ##Wait for threads to stop
-    #coord.join(threads)
+    #Wait for threads to stop
+    coord.join(threads)
 
 
 if __name__ == "__main__":

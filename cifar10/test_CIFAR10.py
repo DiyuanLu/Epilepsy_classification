@@ -32,9 +32,9 @@ def lr(epoch):
 
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 500
-save_every = 50
+save_every = 20
 height, width, channels = 32, 32, 3 #seq_len, 1     # MNIST
-batch_size = 100 # old: 16     20has a very good result
+batch_size = 128 # old: 16     20has a very good result
 num_classes = 10
 #pattern='ds_8*.csv'
 version = 'CNN_Tutorial_Resi'  #'CNN_tutorial' #'AggResNet'  #'Resi_HighwayFNN'  #'Plain_CNN'   ## 'CNN'  ###'Inception'   #            #DilatedCNNDeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
@@ -184,7 +184,7 @@ def train(x):
                     
                     func.plot_train_samples(data_train[rand_int], y_train[rand_int], ylabel=None, save_name=save_name)
                 print("loss_total_train", loss_total_train, "loss_total_test", loss_total_test)
-                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], xlabel= 'training epochs', ifsmooth=False, ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_epoch_{}".format(epoch))
+                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], hlines=[0.7, 0.8, 0.85], xlabel= 'training epochs', ifsmooth=False, ylabel="accuracy", colors=['darkcyan', 'royalblue'], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ "/learning_curve_epoch_{}".format(epoch))
 
                 func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], colors=['c', 'm'], xlabel= 'training epochs',ifsmooth=False, ylabel="loss", title='Loss',labels=['training', 'testing'], save_name=results_dir+ "/losses_epoch_{}".format(epoch))
 

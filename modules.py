@@ -7,7 +7,8 @@ import os
 regularizer = tf.contrib.layers.l2_regularizer(scale=0.1)
 
 def variable_summaries(var):
-    """Attach a lot of summaries to a Tensor (for TensorBoard visualization)."""
+    """Attach a lot of summaries to a Tensor (for TensorBoard visualization).
+    https://www.tensorflow.org/guide/summaries_and_tensorboard"""
     with tf.name_scope('summaries'):
       mean = tf.reduce_mean(var)
       tf.summary.scalar('mean', mean)
@@ -17,6 +18,29 @@ def variable_summaries(var):
       tf.summary.scalar('max', tf.reduce_max(var))
       tf.summary.scalar('min', tf.reduce_min(var))
       tf.summary.histogram('histogram', var)
+
+
+def get_variables_from_graph(layer, *args):
+    '''get the variables from the graph for further visualization
+    param:
+        layer: the output of the layer
+        args: keyword arguments
+                variable_names: '/kernel:0', '/weights:0', '/bias:0'
+
+    e.g.  all_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_scope.name)
+        '''
+    for arg in args:
+        variable_name = os.path.split(layer.name)[0] + '/'+arg+':0'
+        variable = tf.get_default_graph().get_tensor_by_name(variable_name)
+        if len(variable.shape.as_list()) == 4:            
+            # to tf.image_summary format [batch_size, height, width, channels]
+            variable = tf.transpose(variable, [3, 0, 1, 2])
+        
+            tf.summary.image(variable_name, variable)
+        tf.summary
+
+    return variable
+
 
 def fc_net(x, hid_dims=[500, 300, 100], num_classes = 2):
     net = tf.layers.flatten(x)
@@ -161,7 +185,7 @@ def resBlock_CNN(x, filter_size=[9, 1], num_stacks=3, output_channels=16, stride
 
         
 ### should be good!
-def CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], strides=[2, 2], seq_len=10240, width=1, channels=1, num_classes = 2):
+def CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], strides=[2, 2], fc=[300], seq_len=10240, width=1, channels=1, num_classes = 2):
     '''Perform convolution on 1d data
     tutorial how VNN works
     http://cs231n.github.io/convolutional-networks/
@@ -222,18 +246,17 @@ def CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], strides
     
     ##### Logits layer
     net = tf.reshape(net, [-1,  net.shape[1]*net.shape[2]*net.shape[3]])   ### *(10240//seq_len)get short segments together
-    net = tf.layers.dense(inputs=net, units=1000, activation=tf.nn.relu)
-    #net = tf.layers.batch_normalization(net, center = True, scale = True)
-    net = tf.layers.dropout(inputs=net, rate=0.25)
-    #net = tf.layers.dense(inputs=net, units=50, activation=tf.nn.relu)
-  #net = tf.layers.dropout(inputs=net, rate=0.75)
-
+    for ind, units in enumerate(fc):
+        net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.relu)            
+        net = tf.layers.dropout(net, rate=0.5)###0.50
+    tf.summary.histogram("pre_activation", net)
+    
     logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
 
     return logits
 
 
-def CNN_old(x, num_filters=[8, 16, 32], num_block=3, filter_size=9, seq_len=10240, width=1, num_classes = 2):
+def CNN_old(x, num_filters=[8, 16, 32], num_block=3, filter_size=9, seq_len=10240, width=1, fc=[300], num_classes = 2):
     '''Perform convolution on 1d data
     Param:
         x: input data, 3D,array, shape=[batch_size, seq_len, width]
@@ -380,12 +403,12 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
-        ipdb.set_trace()
+
         #tf.summary.image(scope.name+'/filters', )
         #conv = tf.layers.batch_normalization(conv)
         print(scope.name + "shape", conv.shape.as_list())
         pool = tf.layers.max_pooling2d(conv, pool_size=pool_size, strides=strides, padding='SAME')
-        drop = tf.layers.dropout(pool, rate=0.25, name=scope.name)###0.25
+        drop = tf.layers.dropout(pool, rate=0.3, name=scope.name)###0.25
         print(scope.name + "shape", drop.shape.as_list())
 
     with tf.variable_scope('conv2') as scope:
@@ -411,27 +434,27 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
         print(scope.name + "shape", conv.shape.as_list())
         pool = tf.layers.max_pooling2d(conv, pool_size=pool_size, strides=strides, padding='SAME')
         print(scope.name + "shape", pool.shape.as_list())
-        drop = tf.layers.dropout(pool, rate=0.25, name=scope.name)   ###0.25
+        drop = tf.layers.dropout(pool, rate=0.3, name=scope.name)   ###0.25
 
     with tf.variable_scope('fully_connected') as scope:
-        flat = tf.reshape(drop, [-1, drop.shape[1]*drop.shape[2]*drop.shape[3]])
-        print(scope.name + "shape", flat.shape.as_list())
-        dense_out = tf.layers.dense(
-                                    inputs=flat,
-                                    units=fc[0],
-                                    kernel_regularizer=regularizer,
-                                    activation=tf.nn.relu)
-        #dense_out = tf.layers.dense(inputs=flat, units=fc[0], activation=tf.nn.relu)
-        print(scope.name + "shape", dense_out.shape.as_list())
-        drop = tf.layers.dropout(dense_out, rate=0.5)###0.50
+        net = tf.reshape(drop, [-1, drop.shape[1]*drop.shape[2]*drop.shape[3]])
+        print(scope.name + "shape", net.shape.as_list())
+        
+        for ind, units in enumerate(fc):
+            net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.relu)
+            net = tf.layers.dropout(net, rate=0.5)
+            print(scope.name + "shape", net.shape.as_list())
+        tf.summary.histogram("dense_out", net)
+        #ipdb.set_trace()
+        variable_summaries(tf.trainable_variables()[-2])
         logits = tf.layers.dense(
-                                inputs=drop,
+                                inputs=net,
                                 units=num_classes,
                                 activation=tf.nn.softmax,
                                 kernel_regularizer=regularizer,
                                 name=scope.name)
 
-    return logits, drop
+    return logits, net
 
 
 
@@ -510,49 +533,23 @@ def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, ch
     with tf.variable_scope('fully_connected') as scope:
         flat = tf.reshape(conv, [-1, conv.shape[1]*conv.shape[2]*conv.shape[3]])
         print(scope.name + "shape", flat.shape.as_list())
-        dense_out = tf.layers.dense(
-                                    inputs=flat,
-                                    units=fc[0],
-                                    kernel_regularizer=regularizer,
-                                    activation=tf.nn.relu)
-        print(scope.name + "shape", dense_out.shape.as_list())
-        drop = tf.layers.dropout(dense_out, rate=0.5)###0.50
+        ### dense layer
+        for ind, units in enumerate(fc):
+            net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.relu)            
+            net = tf.layers.dropout(net, rate=0.5)###0.50
+        tf.summary.histogram('pre_activation', net)
         ##### high-way net
         #H = tf.layers.dense(drop, units=num_outputs, activation=tf.nn.relu, name=scope.name+"denseH")
         #T = tf.layers.dense(drop, units=num_outputs, activation=tf.nn.sigmoid, name=scope.name+"denseT")
         #C = 1. - T
         #drop = H * T + drop * C
         logits = tf.layers.dense(
-                                inputs=drop,
+                                inputs=net,
                                 units=num_classes,
                                 activation=tf.nn.softmax,
-                                kernel_regularizer=regularizer,
-                                name=scope.name)
+                                kernel_regularizer=regularizer)
+    return logits
 
-    return logits, drop
-
-
-def get_variables_from_graph(layer, *args):
-    '''get the variables from the graph for further visualization
-    param:
-        layer: the output of the layer
-        args: keyword arguments
-                variable_names: '/kernel:0', '/weights:0', '/bias:0'
-
-    e.g.  all_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_scope.name)
-        '''
-    for arg in args:
-        variable_name = os.path.split(layer.name)[0] + '/'+arg+':0'
-        variable = tf.get_default_graph().get_tensor_by_name(variable_name)
-        if len(variable.shape.as_list()) == 4:            
-            # to tf.image_summary format [batch_size, height, width, channels]
-            variable = tf.transpose(variable, [3, 0, 1, 2])
-        
-            tf.summary.image(variable_name, variable)
-        tf.summary
-
-    return variable
-        
 
 def DeepConvLSTM(x, output_channels=[8, 16, 32, 64], filter_size=[3, 3], pool_size=[2, 2], strides=[2, 2],  num_lstm=64, group_size=8, seq_len=10240, width=2, channels=1, fc=[1000], num_classes = 2):
     '''work is inspired by
@@ -609,13 +606,18 @@ def DeepConvLSTM(x, output_channels=[8, 16, 32, 64], filter_size=[3, 3], pool_si
         #net = tf.layers.batch_normalization(outputs[-1], center = True, scale = True)
         net  = tf.reshape(outputs[-1], [-1, num_lstm])
         print("reshape net ", net.shape.as_list())
-        #ipdb.set_trace()
-        #net = tf.layers.dense(inputs=net, units=fc1, activation=tf.nn.relu)
-        #print("net ", net.shape.as_list())
-        net = tf.layers.batch_normalization(net, center = True, scale = True)
+
+        ### dense layer
+        for ind, units in enumerate(fc):
+            net = tf.layers.dense(inputs=net, units=units, activation=tf.nn.relu)
+            net = tf.layers.batch_normalization(net)
+            
+        tf.summary.histogram('pre_activation', net)
+        print("net ", net.shape.as_list())
+        ### logits
         logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.softmax)
         print("net ", logits.shape.as_list())
-        tf.summary.histogram('activation', net)
+        tf.summary.histogram('logits', net)
 
     ##### track all variables
     all_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
@@ -627,14 +629,14 @@ def DeepConvLSTM(x, output_channels=[8, 16, 32, 64], filter_size=[3, 3], pool_si
     return logits, kernels
 
 
-def RNN(x, num_lstm=128, seq_len=1240, width=2, channels=1, group_size=32, num_classes = 2):
+def RNN(x, num_lstm=128, seq_len=10240, width=2, channels=1, group_size=32, fc=[200], num_classes = 2):
     '''Use RNN
     x: shape[batch_size,time_steps,n_input]'''
     with tf.variable_scope("rnn_lstm") as layer_scope:
         net = tf.reshape(x, [-1, seq_len, width, channels])
         #ipdb.set_trace()
         #### prepare the shape for rnn: "time_steps" number of [batch_size,n_input] tensors
-        net = tf.reshape(net, [-1, seq_len//group_size,group_size*2])   ### feed not only one row but 8 rows of raw data
+        net = tf.reshape(net, [-1, seq_len//group_size, group_size*2])   ### feed not only one row but 8 rows of raw data
         print("net ", net.shape.as_list())
         net = tf.unstack(net, axis=1)
 
@@ -643,17 +645,49 @@ def RNN(x, num_lstm=128, seq_len=1240, width=2, channels=1, group_size=32, num_c
         outputs, _ =tf.nn.static_rnn(lstm_layer, net, dtype="float32")
         net = tf.layers.batch_normalization(outputs[-1], center = True, scale = True)
         print("net ", net.shape.as_list())
-        net = tf.layers.dense(inputs=net, units=100, activation=tf.nn.relu)
-        net = tf.layers.batch_normalization(outputs[-1], center = True, scale = True)
+        
+        for ind, units in enumerate(fc):
+            net = tf.layers.dense(inputs=net, units=units, activation=tf.nn.relu)
+            net = tf.layers.batch_normalization(net)
+        tf.summary.histogram('pre_activation', net)
+        
         net = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.softmax)
         print("net", net.shape.as_list())
-        net = tf.layers.batch_normalization(net, center = True, scale = True)
-        tf.summary.histogram('activation', net)
+        tf.summary.histogram('logits', net)
     return net
 
+def RNN_Tutorial(x, num_lstm=[100, 100], seq_len=10240, width=2, channels=1, group_size=32, fc=[100, 100], num_classes = 2):
+    '''based on the method in https://ieeexplore.ieee.org/document/7727334/
+    1. from the correlation length dixtribution get the optimal segment length--86, then 10240 // 86 = 119-- majority vote
+    '''
+    #with tf.variable_scope("rnn_lstm") as layer_scope:
+    #net = tf.reshape(x, [-1, seq_len, width, channels])
+    #### prepare the shape for rnn: "time_steps" number of [batch_size,n_input] tensors
+    net = tf.reshape(x, [-1, seq_len, width*channels])   ### feed not only one row but 8 rows of raw data
+    
+    ##### defining the network
+    with tf.variable_scope("lstm_fc") as scope:
+        ipdb.set_trace()
+        net = tf.unstack(net, axis=1)
+        lstm_layer = tf.contrib.rnn.BasicLSTMCell(lstm_unit, forget_bias=1)
+        outputs, _ =tf.nn.static_rnn(lstm_layer, net, dtype="float32")
+        #print("lstm {} out".format(ind), outputs.shape)
+        net = tf.layers.batch_normalization(outputs[-1], center = True, scale = True)
+        tf.summary.histogram('pre_activation', net)
+        net = tf.layers.dense(inputs=net, units=fc[ind], activation=None)
+        net = tf.layers.batch_normalization(net)
+        print("lstm dense {} out".format(ind), net.shape)
+        tf.summary.histogram('pre_activation', net)
+    print("net ", net.shape.as_list())
+    
+    net = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.softmax)
+    print("net", net.shape.as_list())
+    tf.summary.histogram('logits', net)
+    return net
+    
+    
 
-
-def Atrous_CNN(x, output_channels_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 16], kernel_size = [9, 1], pool_size=[2, 2], strides=[2, 2], seq_len=10240, width=1, num_classes = 10):
+def Atrous_CNN(x, output_channels_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 16], filter_size = [9, 1], pool_size=[2, 2], strides=[2, 2], fc=[200],seq_len=10240, width=1, num_classes = 10):
     '''Perform convolution on 1d data
     Atrous Spatial Pyramid Pooling includes:
     https://sthalles.github.io/deep_segmentation_network/
@@ -697,7 +731,7 @@ def Atrous_CNN(x, output_channels_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 1
             conv_net = tf.layers.conv2d(
                                                 inputs = conv_net,
                                                 filters = output_channels_cnn[ind],
-                                                kernel_size=kernel_size,
+                                                kernel_size=filter_size,
                                                 padding = 'same',
                                                 activation=tf.nn.relu)
             conv_net = tf.layers.max_pooling2d(inputs=conv_net, pool_size=pool_size, strides=strides)
@@ -747,8 +781,10 @@ def Atrous_CNN(x, output_channels_cnn=[8, 16, 32, 64], dilation_rate=[2, 4, 8, 1
     #ipdb.set_trace()
     #net = tf.reshape(net, [-1, 1] )
     print("flatten net ", net.shape.as_list())
-    net = tf.layers.dense(inputs = net, units=50, activation = tf.nn.relu)
-    net = tf.layers.batch_normalization(net, center = True, scale = True)
+    for ind, units in enumerate(fc):
+        net = tf.layers.dense(inputs=net, units=units, activation=tf.nn.relu)
+        net = tf.layers.batch_normalization(net)
+
     print("net ", net.shape.as_list())
     ## Logits layer
     logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
@@ -812,7 +848,7 @@ def CNN_new(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], poo
 
     return logits
 
-def PyramidPoolingConv(x, output_channels=[2, 4, 8, 16, 32, 64, 128], filter_size=[5, 1], dilation_rate=[2, 8, 16, 32, 64], seq_len=10240, width=2, channels=1, num_seg=5, num_classes=2):
+def PyramidPoolingConv(x, output_channels=[2, 4, 8, 16, 32, 64, 128], filter_size=[[5, 1]], dilation_rate=[[2,1], [8,1], [16,1], [32,1]], fc=[500], strides=[2, 1], seq_len=10240, width=2, channels=1, num_seg=5, num_classes=2):
     '''extract temporal dependencies with different levels of dilation
     https://sthalles.github.io/deep_segmentation_network/'''
     inputs = tf.reshape(x,  [-1, seq_len, width, channels])
@@ -825,7 +861,7 @@ def PyramidPoolingConv(x, output_channels=[2, 4, 8, 16, 32, 64, 128], filter_siz
                                          inputs = inputs,
                                          filters = output_channels[0],   ##[filter_height, filter_width, in_channels, out_channels]
                                          kernel_size = filter_size,
-                                         dilation_rate = (rate, 1),
+                                         dilation_rate = rate,
                                          padding = 'same',
                                          activation = None)
         net = tf.layers.batch_normalization(net, center = True, scale = True)
@@ -839,7 +875,7 @@ def PyramidPoolingConv(x, output_channels=[2, 4, 8, 16, 32, 64, 128], filter_siz
                                          inputs = net,
                                          filters = num_filter,   ##[filter_height, filter_width, in_channels, out_channels]
                                          kernel_size = filter_size,
-                                         strides = (2, 1),
+                                         strides = strides,
                                          padding = 'same',
                                          activation = tf.nn.relu)
                 net = tf.layers.batch_normalization(net, center = True, scale = True)
@@ -878,6 +914,10 @@ def PyramidPoolingConv(x, output_channels=[2, 4, 8, 16, 32, 64, 128], filter_siz
     print("flatten net ", net.shape.as_list())
 
     ## Logits layer
+    for ind, units in enumerate(fc):
+        net = tf.layers.dense(inputs=net, units=units, activation=tf.nn.relu)
+        net = tf.layers.batch_normalization(net)
+        
     logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
     
     return logits
@@ -942,7 +982,7 @@ def Inception_block(x, in_channels = 32, out_channels=32, reduce_chanenls=16, fi
 
 
     
-def Inception_complex(x, output_channels=[16, 32], filter_size=[[5, 1], [9, 1]], reduce_chanenls=16, pool_size=[2, 1], strides=[2, 1], num_blocks=2, seq_len=10240, width=2, channels=1, num_classes=2):
+def Inception_complex(x, output_channels=[16, 32], filter_size=[[5, 1], [9, 1]], reduce_chanenls=16, pool_size=[2, 1], strides=[2, 1], fc=[500], num_blocks=2, seq_len=10240, width=2, channels=1, num_classes=2):
     '''https://hacktilldawn.com/2016/09/25/inception-modules-explained-and-implemented/
     '''
     
@@ -956,8 +996,9 @@ def Inception_complex(x, output_channels=[16, 32], filter_size=[[5, 1], [9, 1]],
     
     net = tf.reshape(net, [-1, net.shape[1]*net.shape[2]*net.shape[3]])
     print("flatten net ", net.shape.as_list())
-    net = tf.layers.dense(inputs=net, units=700, activation=tf.nn.relu)
-    net = tf.layers.batch_normalization(net)
+    for ind, units in enumerate(fc):
+        net = tf.layers.dense(inputs=net, units=units, activation=tf.nn.relu)
+        net = tf.layers.batch_normalization(net)
 
     ## Logits layer
     logits = tf.layers.dense(inputs=net, units=num_classes, activation=tf.nn.sigmoid)
@@ -966,7 +1007,7 @@ def Inception_complex(x, output_channels=[16, 32], filter_size=[[5, 1], [9, 1]],
     return logits
 
 
-def ResNet(x, num_layer_per_block=3, num_block=4, filter_size=[[5, 1], [9, 1]], pool_size=[2, 1], strides=[2, 1], output_channels=[32, 64, 128], seq_len=10240, width=2, channels=1, num_classes=2):
+def ResNet(x, num_layer_per_block=3, num_block=4, filter_size=[[5, 1], [9, 1]], pool_size=[2, 1], strides=[2, 1], output_channels=[32, 64, 128], fc=[500], seq_len=10240, width=2, channels=1, num_classes=2):
     '''https://medium.com/@pierre_guillou/understand-how-works-resnet-without-talking-about-residual-64698f157e0c
     34-layer-residual structure'''
     net = tf.reshape(x, [-1, seq_len, width, channels])
@@ -1018,8 +1059,9 @@ def ResNet(x, num_layer_per_block=3, num_block=4, filter_size=[[5, 1], [9, 1]], 
     net = tf.layers.max_pooling2d(inputs=net, pool_size=[2, 1], strides=[2, 1])
     net = tf.reshape(net, [-1, net.shape[1]*net.shape[2]*net.shape[3]])
     ### dense layer
-    net = tf.layers.dense(net, units=500, activation=tf.nn.relu)
-    net = tf.layers.batch_normalization(net)
+    for ind, units in enumerate(fc):
+        net = tf.layers.dense(net, units=units, activation=tf.nn.relu)
+        net = tf.layers.batch_normalization(net)
     logits = tf.layers.dense(net, units=num_classes, activation=tf.nn.relu)
     
     return logits

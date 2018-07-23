@@ -77,7 +77,7 @@ def plotTSNE(data, labels, num_classes=2, n_components=3, title="t-SNE", save_na
     plt.close()
 
 
-batch_size = 64
+batch_size = 128
 epochs = 20
 '''MNIST'''
 #batch_size = 128
@@ -223,7 +223,8 @@ model = Sequential()
 # model.add(Flatten())
 #model.add(Dense(500, input_shape=(10239,2), activation='relu'))
 model.add(Dense(100, input_shape=(feature_width,), activation='relu'))
-model.add(Dropout(0.5))
+#model.add(Dropout(0.5))
+model.add(BatchNormalization())
 # model.add(Dense(300, activation='relu'))
 # model.add(Dropout(0.75))
 model.add(Dropout(0.5))
