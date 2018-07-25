@@ -16,7 +16,7 @@ import ipdb
 import pandas as pd
 import os
 import datetime
-from sklearn.model_selection import train_test_split
+
 import argparse
 """
 Authors:    Dario Cazzani
@@ -183,6 +183,7 @@ def train_test_split_my_data(data_dir, pattern='Data*.csv', num_samples=784, wit
     return:
         datas_train: num_samples*(seq_len*2)
         datas_test: num_samples*(seq_len*2)'''
+    from sklearn.model_selection import train_test_split
     files = find_files(data_dir, pattern='Data*.csv', withlabel=False)
     
     datas = np.zeros((len(files), 10240*2))   ## flatten the 2 channels data

@@ -56,10 +56,29 @@ def find_files(directory, pattern='Data*.csv', withlabel=True):
     for root, dirnames, filenames in os.walk(directory):
         for filename in fnmatch.filter(filenames, pattern):
             if withlabel:
-                if 'Data_F' in filename:
-                    label = '1'
-                elif 'Data_N' in filename:
-                    label = '0'
+                if 'Data' in pattern:
+                    if 'Data_F' in filename:
+                        label = '1'
+                    elif 'Data_N' in filename:
+                        label = '0'
+                elif 'segNorm' in filename:
+                    if 'baseline' in filename:
+                        label = '0'
+                    elif 'tip-off' in filename:
+                        label = '1'
+                    elif 'seizure' in filename:
+                        label = '2'
+                elif 'Bonn' in filename:
+                    if 'Z' in filename:
+                        label = '0'
+                    elif 'O' in filename:
+                        label = '0'
+                    elif 'N' in filename:
+                        label = '1'
+                    elif 'F' in filename:
+                        label = '1'
+                    elif 'S' in filename:
+                        label = '2'
                 files.append((os.path.join(root, filename), label))
             else:  # only get names
                 files.append(os.path.join(root, filename))
@@ -220,75 +239,64 @@ def get_corr_len(datas, labels, save_name='results/', postfix='Nonfocal'):
     return:
     '''
     corr_len = np.zeros((datas.shape[0]))
+    auto_corr = []
     for ind in range(datas.shape[0]):
         if ind % 500 == 0:
             print("file: ", ind)
-        y = datas[ind, :, 0] - np.mean(datas[ind, :, 0])
-        norm = np.sum(y ** 2)
-        correlated = np.correlate(y, y, mode='full')/norm
+        err = datas[ind, :, 0] - np.mean(datas[ind, :, 0])
+        variance = np.sum(err ** 2) / datas[ind, :, 0].size
+        correlated = np.correlate(err, err, mode='full')/variance
         correlated = correlated[correlated.size//2:]
         sign = np.sign(correlated)
         signchange = np.where(sign[1:] - sign[0:-1])[0][0]   ### get where the line cross the zero line
-        corr_len[ind] = signchange / 512.0
-    #ipdb.set_trace()
-    np.savetxt('corr_len_distribution_train_{}.csv'.format(postfix), corr_len, header='#correlation length distribution', delimiter=',', comments='')
-    plt.hist(corr_len, color='slateblue', bins=100, alpha=0.7)  # arguments are passed to np.histogram
+        corr_len[ind] = signchange / 173.6
+        auto_corr.append(correlated)
+
+    np.savetxt('corr_len_distribution_{}.csv'.format(postfix), corr_len, header='#correlation length distribution', delimiter=',', comments='')
+    plt.hist(corr_len, color='slateblue', bins=100, alpha=0.8)  # arguments are passed to np.histogram
     plt.title("Correlation length distribution")
     plt.xlabel("time delay (s)")
-    plt.savefig(save_name+"Correlation length distribution-{}".format(postfix), format='png')
+    plt.savefig("Correlation length distribution-{}".format(postfix), format='png')
     plt.close()
     return corr_len
-    
-#for window in range(1024, 5121, 512):
-    ##for lag in range(1, 52, 2):
-        ##for ind, filename in enumerate(files):
-            ##print filename
-            ##data_x, data_y = read_data(filename)
-            ##corr = lag1_ar(data_x, window=window, lag=lag)
-            ##if "_F_" in filename:
-                ##color = "b"
-            ##else:
-                ##color= 'c'
-            ##plt.plot(corr, color=color, label='{}_ind{}'.format(filename[21:23], ind))
-        ##plt.title("AR(1)")
-        ##plt.legend(loc="best")
-        ##plt.xlabel("time step/ win={}, lag={}".format(window, lag))
-        ##plt.savefig("data/test_files/AR1_win{}_lag{}".format(window, lag))
-        ##plt.close()
-data_dir = "../data/Whole_data/train_data/"
+
+
+
+#######################################################################################
+data_dir = "../data/Bonn_data/"
 
 #data_dir = "test_files/"
-files = find_files(data_dir, pattern='Data_F*.csv', withlabel=True)
-datas = np.zeros((len(files), 10240, 2))
+files = find_files(data_dir, pattern="Bonn*.csv", withlabel=True)
+
+datas = np.zeros((len(files), 4097+1))
 labels = np.array(files)[:, 1].astype(np.int)
+filenames = np.array(files)[:, 0].astype(np.str)
+datas[:, 0] = labels
 
-for ind, filename in enumerate(np.array(files)[:, 0]):
-    if ind % 1000 == 0:
-        print(ind, filename)
+for ind, filename in enumerate(filenames):
     data = read_data(filename, header=None, ifnorm=True)
-    datas[ind, :, :] = data
-#ipdb.set_trace()
-corr_F = get_corr_len(datas, labels, postfix='Focal')
-
+    datas[ind,1:] = np.squeeze(data)
+ipdb.set_trace()
+np.savetxt('Bonn_all_shuffle_data.csv', datas, header=['lable']+['value']*4097, delimiter=',', comments='')
 ### get the normalized PSD in frequency bands
 #get_normalized_freq_band_PSD_save_csv(datas, labels, Fs=512, save_name=data_dir)
 
 
 
-        
 
-    #plotPowerSpectrum(data, 50, color='m', label='x', title='PSD {}'.format(filename))
-    #plt.show()
-    #x_data2, y_data2 = read_data(files[1])
-    ##fft, correlation = autocorrelation(x_data)
-    
-    ##sd.play(x_data, 1000)
-    ##wavfile.write("results/audio/" + filename + "fs1000.wav", 1000, x_data)
-    #ipdb.set_trace()
-    #plotOnePair(x_data1, y_data1, x_data2, y_data2)
-    #ipdb.set_trace()
-    ##plt.show()
-    #plt.savefig(  files[0][0:-4] +"compare_F_NF_linear.png")
-    #plt.close()
+
+#plotPowerSpectrum(data, 50, color='m', label='x', title='PSD {}'.format(filename))
+#plt.show()
+#x_data2, y_data2 = read_data(files[1])
+##fft, correlation = autocorrelation(x_data)
+
+##sd.play(x_data, 1000)
+##wavfile.write("results/audio/" + filename + "fs1000.wav", 1000, x_data)
+#ipdb.set_trace()
+#plotOnePair(x_data1, y_data1, x_data2, y_data2)
+#ipdb.set_trace()
+##plt.show()
+#plt.savefig(  files[0][0:-4] +"compare_F_NF_linear.png")
+#plt.close()
 
 

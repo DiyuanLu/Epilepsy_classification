@@ -13,7 +13,7 @@ import os
 import sys
 from functools import partial      ### for multiprocessing
 import matplotlib.pyplot as plt
-import ipdb
+#import ipdb
 import random
 from scipy.stats import zscore
 import pandas as pd
@@ -30,26 +30,98 @@ params = {'legend.fontsize': 12,
 pylab.rcParams.update(params)
 import matplotlib
 
+########################### model ######################
+def lr(epoch):
+    learning_rate = 0.01
+    if epoch > 120:
+        learning_rate *= 0.5e-3
+    elif epoch > 100:
+        learning_rate *= 1e-3
+    elif epoch > 50:
+        learning_rate *= 1e-2
+    elif epoch > 20:
+        learning_rate *= 1e-1
+    return learning_rate
+
+def get_save_every(epoch):
+    save_every = 2
+    if epoch > 30:
+        save_every = 10
+    elif epoch > 9:
+        save_every = 5
+
+    return save_every
+    
+def save_model(saver, sess, logdir, step):
+    model_name = 'model.ckpt'
+    checkpoint_path = os.path.join(logdir, model_name)
+    print('Storing checkpoint to {} ...'.format(logdir))
+    sys.stdout.flush()
+
+    if not os.path.exists(logdir):
+        os.makedirs(logdir)
+
+    saver.save(sess, checkpoint_path, global_step=step)
+    print(' Done.')
+    
+
+def load_model(saver, sess, save_dir):
+    #print('Trying to restore saved checkpoints from {} ...'.format(logdir),
+          #end='')
+    ckpt = tf.train.get_checkpoint_state(save_dir)
+    if ckpt:
+        print('  Checkpoint found: {}'.format(ckpt.model_checkpoint_path))
+        global_step = int(ckpt.model_checkpoint_path
+                          .split('/')[-1]
+                          .split('ch')[-1])
+        print('  Global step was: {}'.format(global_step))
+        print('  Restoring...')
+        saver.restore(sess, ckpt.model_checkpoint_path)
+        print(' Done.')
+        return global_step
+    else:
+        print(' No checkpoint found.')
+        return None
+        
+
+
 ###################### files operation##########################
-def find_files(directory, pattern='Data*.txt', withlabel=True):
+def find_files(directory, pattern='Data*.csv', withlabel=True):
     '''fine all the files in one directory and assign '1'/'0' to F or N files'''
     files = []
     for root, dirnames, filenames in os.walk(directory):
         for filename in fnmatch.filter(filenames, pattern):
             if withlabel:
-                if 'Data_F' in filename:
-                    label = '1'
-                elif 'Data_N' in filename:
-                    label = '0'
+                if 'Data' in pattern:
+                    if 'Data_F' in filename:
+                        label = '1'
+                    elif 'Data_N' in filename:
+                        label = '0'
+                elif 'segNorm' in filename:
+                    if 'baseline' in filename:
+                        label = '0'
+                    elif 'tip-off' in filename:
+                        label = '1'
+                    elif 'seizure' in filename:
+                        label = '2'
+                else:
+                    if 'Z' or 'O' in filename:
+                        label = '0'
+                    elif 'N' or 'F' in filename:
+                        label = '1'
+                    elif 'S' in filename:
+                        label = '2'
                 files.append((os.path.join(root, filename), label))
             else:  # only get names
                 files.append(os.path.join(root, filename))
-    random.shuffle(files)   # randomly shuffle the files
-    return files
+    print(len(files))
+    random.shuffle(files)
+    return files 
+
 
 def rename_files(filename):
     #os.rename(filename, os.path.dirname(filename) + '/Data_' + os.path.basename(filename)[5:])
-    os.rename(filename, filename[0:-5] + ".csv")
+    os.rename(filename, os.path.dirname(filename)+'/Bonn_'+os.path.basename(filename))
 
 def remove_files(filename):
     os.remove(filename)
@@ -57,7 +129,7 @@ def remove_files(filename):
 def multiprocessing_func(data_dir):
     '''PicklingError: Can't pickle <type 'function'>: attribute lookup __builtin__.function failed
     PLEASE disable the import ipdb!!!'''
-    filenames = find_files(data_dir, pattern='Data*.csv', withlabel=False )
+    filenames = find_files(data_dir, pattern='*.csv', withlabel=False )
     print(filenames)
     #ipdb.set_trace()
     pool = multiprocessing.Pool()
@@ -91,7 +163,7 @@ def read_data(filename, header=None, ifnorm=True, start=0, width=2 ):
     return:
         data: 2d array [seq_len, channel]'''
 
-    data = pd.read_csv(filename, header=header, nrows=None)
+    data = pd.read_csv(filename, header=header)
     data = data.values   ### get data without row_index
     if ifnorm:   ### 2 * 10240  normalize the data into [0.0, 1.0]]
         data_norm = zscore(data)
@@ -203,13 +275,9 @@ def load_and_save_data_to_npz(data_dir, pattern='Data*.csv', withlabel=True, ifn
         data = read_data(files[ind], ifnorm=ifnorm)
         datas[ind, :, :] = data
 
-    #np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
     np.savez(data_dir + "/" + save_name, data=datas, label=np.array(labels))
     
     return datas, np.array(labels)
-
-
-#x_train=xx_train, y_train=yy_train, x_test=xx_test, y_test=yy_test
 
 
 def downsampling(filename, ds_factor):
@@ -224,23 +292,6 @@ def save_data_to_csv(data, header='data', save_name="save_data"):
     data: list of data that need to be saved, (x1, x2, x3...)
     header: String that will be written at the beginning of the file.'''
     np.savetxt(save_name, data, header=header, delimiter=',', fmt="%10.5f", comments='')
-
-
-    
-
-    
-
-def load_data(data_dir):
-    '''Load variables' data from pre-saved .csv file
-    return a dict '''
-    reader = csv.reader(codecs.open(data_dir, 'rb', 'utf-8'))
-    data = dict()
-    for ind, row in enumerate(reader):
-        if  ind == 0:
-            names = row
-        else:
-            data[names[ind-1]]= np.array(row).astype(np.float32)
-    return data, names
 
 def smooth(x, window_len=11,window='hanning'):
     """smooth the data using a window with requested size.
@@ -297,13 +348,13 @@ def slide_and_segment(data_x, num_seg=5, window=128, stride=64):
         expand_y : shape(num_seq*num_segment, num_classes)
         '''
     assert len(data_x.shape) == 3
-    if data_x.shape[1] % num_seg == 0:   ## if it's int segment
-        num_seg = (data_x.shape[1] - np.int(window)) // stride + 1
-    else:
-        num_seg = (data_x.shape[1] - np.int(window)) // stride
+    #if data_x.shape[1] % num_seg == 0:   ## if it's int segment
+        #num_seg = (data_x.shape[1] - np.int(window)) // stride + 1
+    #else:
+        #num_seg = (data_x.shape[1] - np.int(window)) // stride
         
     expand_data = np.zeros((data_x.shape[0], num_seg, window, data_x.shape[-1]))
-    # ipdb.set_trace()
+    #ipdb.set_trace()
     for ii in range(data_x.shape[0]):
         
         shape = (num_seg, window, data_x.shape[-1])      ## done change the num_seq
@@ -404,7 +455,32 @@ def linear_interpolation(data):
 
     return data
 
-    
+def add_random_noise(data, prob=0.5, noise_amp=0.02):
+    '''randomly add noise to original data
+    param:
+        data: 2D array: batch_size*seq_len*width
+        '''
+    shape = data.shape
+    mask = np.random.uniform(0, 1, shape)
+    mask[mask > prob] = 1
+    mask[mask <= prob] = 0
+
+    noise = noise_amp * np.random.randn(data.size).reshape(shape)
+    noise = noise * mask
+    data = data + noise
+
+    return data
+
+
+def random_crop(data, crop_len=10000):
+    '''given a target seq len, randomly crop the data'''
+    choice = data.shape[1] - crop_len
+    start = np.random.choice(choice, data.shape[0])
+    crop_data = np.array([data[i, start[i]:start[i]+crop_len] for i in range(data.shape[0])])
+
+    return crop_data
+
+
 ###################### plots ##########################
 def plot_learning_curve(train_scores, test_scores , num_trial=1, title="Learning curve", save_name="learning curve"):
     '''plot smooth learning curve
@@ -489,7 +565,58 @@ def plot_test_samples(samples, true_labels, pred_labels, save_name='results/'):
     plt.savefig(save_name + 'samples_test.pdf', format = 'pdf')
     plt.close()
 
+def put_kernels_on_grid (kernel, pad = 1):
 
+  '''Visualize conv. filters as an image (mostly for the 1st layer).
+  Arranges filters into a grid, with some paddings between adjacent filters.
+  Args:
+    kernel:            tensor of shape [Y, X, NumChannels, NumKernels]
+    pad:               number of black pixels around each filter (between them)
+  Return:
+    Tensor of shape [1, (Y+2*pad)*grid_Y, (X+2*pad)*grid_X, NumChannels].
+    https://gist.github.com/kukuruza/03731dc494603ceab0c5
+  '''
+  # get shape of the grid. NumKernels == grid_Y * grid_X
+  def factorization(n):
+    for i in range(int(np.sqrt(float(n))), 0, -1):
+      if n % i == 0:
+        if i == 1: print('Who would enter a prime number of filters')
+        return (i, int(n / i))
+  (grid_Y, grid_X) = factorization (kernel.get_shape()[3].value)
+  print ('grid: %d = (%d, %d)' % (kernel.get_shape()[3].value, grid_Y, grid_X))
+
+  x_min = tf.reduce_min(kernel)
+  x_max = tf.reduce_max(kernel)
+  kernel = (kernel - x_min) / (x_max - x_min)
+
+  # pad X and Y
+  x = tf.pad(kernel, tf.constant( [[pad,pad],[pad, pad],[0,0],[0,0]] ), mode = 'CONSTANT')
+
+  # X and Y dimensions, w.r.t. padding
+  Y = kernel.get_shape()[0] + 2 * pad
+  X = kernel.get_shape()[1] + 2 * pad
+
+  channels = kernel.get_shape()[2]
+
+  # put NumKernels to the 1st dimension
+  x = tf.transpose(x, (3, 0, 1, 2))
+  # organize grid on Y axis
+  x = tf.reshape(x, tf.stack([grid_X, Y * grid_Y, X, channels]))
+
+  # switch X and Y axes
+  x = tf.transpose(x, (0, 2, 1, 3))
+  # organize grid on X axis
+  x = tf.reshape(x, tf.stack([1, X * grid_X, Y * grid_Y, channels]))
+
+  # back to normal order (not combining with the next step for clarity)
+  x = tf.transpose(x, (2, 1, 3, 0))
+
+  # to tf.image_summary order [batch_size, height, width, channels],
+  #   where in this case batch_size == 1
+  x = tf.transpose(x, (3, 0, 1, 2))
+
+  # scaling to [0, 255] is not necessary for tensorboard
+    return x
         
 def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'):
     '''visualize fc layer activation given some inputs
@@ -533,10 +660,8 @@ def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'
     
     acti_mat_all = []
     acti_mat = np.zeros((inputs.shape[0], bias.shape[0]))
-    #for ind in range(inputs.shape[0]):
-    
-        #acti = sess.run(activation, feed_dict={example: inputs[ind, :, :]})
-        #acti_tot[ind, :] = acti
+
+
 
 def plot_train_samples(samples, true_labels, xlabel='label: 0', ylabel='value', save_name='results/'):
     plt.figure()
@@ -651,75 +776,94 @@ def plot_bar_chart():
         
         plt.text(r1[ind]+ 0.25*barWidth, mean_new[ind]+0.005, '{0:.3f}'.format(mean_new[ind]), size = 18)
 
+def plot_auc_curve(labels, predictions, save_name='results/'):
+    '''plot the auc curve'''
+    from sklearn.metrics import roc_curve, auc
+    fpr, tpr, _ = roc_curve(labels, predictions)
+    roc_auc = auc(fpr, tpr)
+    print("sklearn auc: ", roc_auc)
+    plt.figure()
+    plt.plot(fpr, tpr, label='ROC (curve area = %0.2f)'% roc_auc)
+    plt.plot([0, 1], [0,1], 'k--')
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('false positive rate')
+    plt.ylabel('true positive rate')
+    plt.title('Receiver Operating Characteristic (ROC)')
+    plt.legend(loc='best')
+    plt.savefig(save_name + 'auc_curve.png', format='png')
+    plt.close()
+    
 ####################### Data munipulation##########################
 
-## #
-#if __name__ == "__main__":
- ##     #data_dir = "data/train_data"
- ##     # data_dir_test = "data/test_data"
- ##     #data_dir = 'data/test_files'
- ##     # # read_data_save_tfrecord(data_dir)
-    ## ddd = ["data/train_data", "data/test_data"]
-     ## ipdb.set_trace()
-     ## augment_data_with_ar1(filename)
-    ## for direc in ddd:
-    ##multiprocessing_func("data/train_data")
- ##     # get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
- ##     # multiprocessing_func(data_dir)
- ##     # read_from_tfrecord("data/test_files/test_files.tfrecords")
- ##     #read_tfrecord()
- ##     #read_data_save_one_csv(data_dir_test)
- ##     #filename = "data/train_data/train_data.csv"
- ##     #read_data(filename)
-    #data_dir = "data/Whole_Data/validate_data"
+# #
+if __name__ == "__main__":
+ #     #data_dir = "data/train_data"
+ #     # data_dir_test = "data/test_data"
+ #     #data_dir = 'data/test_files'
+ #     # # read_data_save_tfrecord(data_dir)
+    # ddd = ["data/train_data", "data/test_data"]
+     # ipdb.set_trace()
+     # augment_data_with_ar1(filename)
+    # for direc in ddd:
+    #multiprocessing_func("data/train_data")
+ #     # get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
+ #     # multiprocessing_func(data_dir)
+ #     # read_from_tfrecord("data/test_files/test_files.tfrecords")
+ #     #read_tfrecord()
+ #     #read_data_save_one_csv(data_dir_test)
+ #     #filename = "data/train_data/train_data.csv"
+ #     #read_data(filename)
+    data_dir = "data/Bonn_data/"
+    multiprocessing_func(data_dir)
     #load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, num_classes=2)
 
 
-def put_kernels_on_grid (kernel, grid_Y, grid_X, pad = 1):
+#def put_kernels_on_grid (kernel, grid_Y, grid_X, pad = 1):
 
-    '''Visualize conv. features as an image (mostly for the 1st layer).
-    Place kernel into a grid, with some paddings between adjacent filters.
+    #'''Visualize conv. features as an image (mostly for the 1st layer).
+    #Place kernel into a grid, with some paddings between adjacent filters.
 
-    Args:
-      kernel:            tensor of shape [Y, X, NumChannels, NumKernels]
-      (grid_Y, grid_X):  shape of the grid. Require: NumKernels == grid_Y * grid_X
-                           User is responsible of how to break into two multiples.
-      pad:               number of black pixels around each filter (between them)
+    #Args:
+      #kernel:            tensor of shape [Y, X, NumChannels, NumKernels]
+      #(grid_Y, grid_X):  shape of the grid. Require: NumKernels == grid_Y * grid_X
+                           #User is responsible of how to break into two multiples.
+      #pad:               number of black pixels around each filter (between them)
 
-    Return:
-      Tensor of shape [(Y+2*pad)*grid_Y, (X+2*pad)*grid_X, NumChannels, 1].
-    '''
+    #Return:
+      #Tensor of shape [(Y+2*pad)*grid_Y, (X+2*pad)*grid_X, NumChannels, 1].
+    #'''
 
-    x_min = tf.reduce_min(kernel)
-    x_max = tf.reduce_max(kernel)
+    #x_min = tf.reduce_min(kernel)
+    #x_max = tf.reduce_max(kernel)
 
-    kernel1 = (kernel - x_min) / (x_max - x_min)
+    #kernel1 = (kernel - x_min) / (x_max - x_min)
 
-    # pad X and Y
-    x1 = tf.pad(kernel1, tf.constant( [[pad,pad],[pad, pad],[0,0],[0,0]] ), mode = 'CONSTANT')
+    ## pad X and Y
+    #x1 = tf.pad(kernel1, tf.constant( [[pad,pad],[pad, pad],[0,0],[0,0]] ), mode = 'CONSTANT')
 
-    # X and Y dimensions, w.r.t. padding
-    Y = kernel1.get_shape()[0] + 2 * pad
-    X = kernel1.get_shape()[1] + 2 * pad
+    ## X and Y dimensions, w.r.t. padding
+    #Y = kernel1.get_shape()[0] + 2 * pad
+    #X = kernel1.get_shape()[1] + 2 * pad
 
-    channels = kernel1.get_shape()[2]
+    #channels = kernel1.get_shape()[2]
 
-    # put NumKernels to the 1st dimension
-    x2 = tf.transpose(x1, (3, 0, 1, 2))
-    # organize grid on Y axis
-    x3 = tf.reshape(x2, tf.pack([grid_X, Y * grid_Y, X, channels])) #3
+    ## put NumKernels to the 1st dimension
+    #x2 = tf.transpose(x1, (3, 0, 1, 2))
+    ## organize grid on Y axis
+    #x3 = tf.reshape(x2, tf.pack([grid_X, Y * grid_Y, X, channels])) #3
 
-    # switch X and Y axes
-    x4 = tf.transpose(x3, (0, 2, 1, 3))
-    # organize grid on X axis
-    x5 = tf.reshape(x4, tf.pack([1, X * grid_X, Y * grid_Y, channels])) #3
+    ## switch X and Y axes
+    #x4 = tf.transpose(x3, (0, 2, 1, 3))
+    ## organize grid on X axis
+    #x5 = tf.reshape(x4, tf.pack([1, X * grid_X, Y * grid_Y, channels])) #3
 
-    # back to normal order (not combining with the next step for clarity)
-    x6 = tf.transpose(x5, (2, 1, 3, 0))
+    ## back to normal order (not combining with the next step for clarity)
+    #x6 = tf.transpose(x5, (2, 1, 3, 0))
 
-    # to tf.image_summary order [batch_size, height, width, channels],
-    #   where in this case batch_size == 1
-    x7 = tf.transpose(x6, (3, 0, 1, 2))
+    ## to tf.image_summary order [batch_size, height, width, channels],
+    ##   where in this case batch_size == 1
+    #x7 = tf.transpose(x6, (3, 0, 1, 2))
 
-    # scale to [0, 255] and convert to uint8
-    return tf.image.convert_image_dtype(x7, dtype = tf.uint8) 
+    ## scale to [0, 255] and convert to uint8
+    #return tf.image.convert_image_dtype(x7, dtype = tf.uint8) 
