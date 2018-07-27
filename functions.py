@@ -13,7 +13,7 @@ import os
 import sys
 from functools import partial      ### for multiprocessing
 import matplotlib.pyplot as plt
-#import ipdb
+import ipdb
 import random
 from scipy.stats import zscore
 import pandas as pd
@@ -73,7 +73,7 @@ def load_model(saver, sess, save_dir):
         print('  Checkpoint found: {}'.format(ckpt.model_checkpoint_path))
         global_step = int(ckpt.model_checkpoint_path
                           .split('/')[-1]
-                          .split('ch')[-1])
+                          .split('-')[-1])
         print('  Global step was: {}'.format(global_step))
         print('  Restoring...')
         saver.restore(sess, ckpt.model_checkpoint_path)
@@ -565,59 +565,7 @@ def plot_test_samples(samples, true_labels, pred_labels, save_name='results/'):
     plt.savefig(save_name + 'samples_test.pdf', format = 'pdf')
     plt.close()
 
-def put_kernels_on_grid (kernel, pad = 1):
-
-  '''Visualize conv. filters as an image (mostly for the 1st layer).
-  Arranges filters into a grid, with some paddings between adjacent filters.
-  Args:
-    kernel:            tensor of shape [Y, X, NumChannels, NumKernels]
-    pad:               number of black pixels around each filter (between them)
-  Return:
-    Tensor of shape [1, (Y+2*pad)*grid_Y, (X+2*pad)*grid_X, NumChannels].
-    https://gist.github.com/kukuruza/03731dc494603ceab0c5
-  '''
-  # get shape of the grid. NumKernels == grid_Y * grid_X
-  def factorization(n):
-    for i in range(int(np.sqrt(float(n))), 0, -1):
-      if n % i == 0:
-        if i == 1: print('Who would enter a prime number of filters')
-        return (i, int(n / i))
-  (grid_Y, grid_X) = factorization (kernel.get_shape()[3].value)
-  print ('grid: %d = (%d, %d)' % (kernel.get_shape()[3].value, grid_Y, grid_X))
-
-  x_min = tf.reduce_min(kernel)
-  x_max = tf.reduce_max(kernel)
-  kernel = (kernel - x_min) / (x_max - x_min)
-
-  # pad X and Y
-  x = tf.pad(kernel, tf.constant( [[pad,pad],[pad, pad],[0,0],[0,0]] ), mode = 'CONSTANT')
-
-  # X and Y dimensions, w.r.t. padding
-  Y = kernel.get_shape()[0] + 2 * pad
-  X = kernel.get_shape()[1] + 2 * pad
-
-  channels = kernel.get_shape()[2]
-
-  # put NumKernels to the 1st dimension
-  x = tf.transpose(x, (3, 0, 1, 2))
-  # organize grid on Y axis
-  x = tf.reshape(x, tf.stack([grid_X, Y * grid_Y, X, channels]))
-
-  # switch X and Y axes
-  x = tf.transpose(x, (0, 2, 1, 3))
-  # organize grid on X axis
-  x = tf.reshape(x, tf.stack([1, X * grid_X, Y * grid_Y, channels]))
-
-  # back to normal order (not combining with the next step for clarity)
-  x = tf.transpose(x, (2, 1, 3, 0))
-
-  # to tf.image_summary order [batch_size, height, width, channels],
-  #   where in this case batch_size == 1
-  x = tf.transpose(x, (3, 0, 1, 2))
-
-  # scaling to [0, 255] is not necessary for tensorboard
-    return x
-        
+       
 def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'):
     '''visualize fc layer activation given some inputs
     param: 
@@ -793,30 +741,138 @@ def plot_auc_curve(labels, predictions, save_name='results/'):
     plt.legend(loc='best')
     plt.savefig(save_name + 'auc_curve.png', format='png')
     plt.close()
+
+def put_kernels_on_grid(kernel, pad = 1, save_name='kernel'):
+
+    '''Visualize conv. filters as an image (mostly for the 1st layer).
+    Arranges filters into a grid, with some paddings between adjacent filters.
+    Args:
+    kernel:            tensor of shape [Y, X, NumChannels, NumKernels]
+    pad:               number of black pixels around each filter (between them)
+    Return:
+    Tensor of shape [1, (Y+2*pad)*grid_Y, (X+2*pad)*grid_X, NumChannels].
+    https://gist.github.com/kukuruza/03731dc494603ceab0c5
+    '''
+    # get shape of the grid. NumKernels == grid_Y * grid_X
+    def factorization(n):
+        for i in range(int(np.sqrt(float(n))), 0, -1):
+            if n % i == 0:
+                if i == 1:
+                    print('Who would enter a prime number of filters')
+                return (i, int(n / i))
+                
+    (grid_Y, grid_X) = factorization(kernel.shape[3])
+
+    print ('grid: %d = (%d, %d)' % (kernel.shape[3], grid_Y, grid_X))
+
+    
+    x_min = np.min(kernel)
+    x_max = np.max(kernel)
+    kernel = (kernel - x_min) / (x_max - x_min)  ### normalize the kernel
+
+    # pad X and Y
+    x = np.pad(kernel,((pad,pad),(pad, pad),(0,0),(0,0)), 'constant', constant_values=0)
+    # X and Y dimensions, w.r.t. padding
+    Y = kernel.shape[0] + 2 * pad
+    X = kernel.shape[1] + 2 * pad
+    #ipdb.set_trace()
+    channels = kernel.shape[2]    ## in channels
+    print('channels', channels)
+    # put NumKernels to the 1st dimension
+    x = np.transpose(x, (3, 0, 1, 2)) ###(16, 7, 3, 8)
+    print('x.shape', x.shape)
+    # organize grid on Y axis
+    x = x.reshape(grid_X, Y * grid_Y, X, channels)   ###(4, 28, 3, 8)
+    print('x.shape', x.shape)
+    # switch X and Y axes
+    x = np.transpose(x, (0, 2, 1, 3))       ##(4, 3, 28, 8)
+    print('x.shape', x.shape)
+    # organize grid on X axis
+    x = np.reshape(x, [1, X * grid_X, Y * grid_Y, channels])  ###(1, 12, 28, 8)
+    print('x.shape', x.shape)
+    # back to normal order (not combining with the next step for clarity)
+    x = np.transpose(x, (2, 1, 3, 0))   ###(28, 12, 8, 1)
+    print('x.shape', x.shape)
+    # to np.image_summary order [batch_size, height, width, channels],
+    #   where in this case batch_size == 1
+    x = np.transpose(x, (3, 0, 1, 2))   ###(1, 28, 12, 8)
+    print('x.shape', x.shape)
+
+    plt.figure()
+    for ind in range(x.shape[-1]):
+        #plt.subplot(grid_X, grid_Y, ind+1)
+        plt.imshow(x[0, :, :, ind], interpolation='nearest', aspect='auto')
+        plt.savefig(save_name + "-channel{}.png".format(ind), format='png')
+        plt.close()
+
+
+def add_conved_image_to_summary(net, save_name='results/'):
+    '''given the output of a con2d layer, visualize the convolution results
+    Param:
+        net: shape (batch_size, height, width, channels)'''
+    
+    def factorization(n):
+        for i in range(int(np.sqrt(float(n))), 0, -1):
+            if n % i == 0:
+                if i == 1:
+                    print('Who would enter a prime number of filters')
+                return (i, int(n / i))
+
+    num_kernels = net.shape[3].value
+    ix, iy = net.shape[2].value, net.shape[1].value
+    print("ix, iy", ix, iy)
+    (cy, cx) = factorization(net.shape[3].value)
+    pad = 2
+    #ipdb.set_trace()
+    for ind in range(3):
+        image_ori = net[ind,...]
+        print("image_ori", image_ori.shape)
+        tf.summary.image('image_ori{}'.format(ind), image_ori)
+        #ipdb.set_trace()
+        image = tf.pad(image_ori, tf.constant( [[pad,pad],[pad, pad],[0,0]] ), mode = 'CONSTANT')
+        ix_pad = image.shape[1].value
+        iy_pad = image.shape[0].value
+        image = tf.image.resize_image_with_crop_or_pad(image, iy_pad, ix_pad)
+        print("image_ori", image.shape)
+        image = tf.reshape(image,(iy_pad,ix_pad,cy,cx))
+        print("image_ori", image.shape)
+        image = tf.transpose(image,(2,0,3,1)) #cy,iy,cx,ix
+
+        #net = np.pad(net,((pad,pad),(pad, pad),(0,0)), 'constant', constant_values=0)
+        #net = np.reshape(net,(iy,ix,cy,cx))
+        #net = np.transpose(net,(2,0,3,1))
+
+        ### image_summary needs 4d input
+        image= tf.reshape(image,(1,cy*iy_pad,cx*ix_pad,1))
+        tf.summary.image('sample_conved_input_{}'.format(ind), image)
+        #net= np.reshape(net,(1,cy*iy,cx*ix,1))
+        #plt.imshow(net[0, :, :, 0], interpolation='nearest', aspect='auto')
+        #plt.savefig(save_name+'-net_output.png', format='png')
+        #plt.close()
     
 ####################### Data munipulation##########################
 
 # #
-if __name__ == "__main__":
- #     #data_dir = "data/train_data"
- #     # data_dir_test = "data/test_data"
- #     #data_dir = 'data/test_files'
- #     # # read_data_save_tfrecord(data_dir)
-    # ddd = ["data/train_data", "data/test_data"]
-     # ipdb.set_trace()
-     # augment_data_with_ar1(filename)
-    # for direc in ddd:
-    #multiprocessing_func("data/train_data")
- #     # get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
- #     # multiprocessing_func(data_dir)
- #     # read_from_tfrecord("data/test_files/test_files.tfrecords")
- #     #read_tfrecord()
- #     #read_data_save_one_csv(data_dir_test)
- #     #filename = "data/train_data/train_data.csv"
- #     #read_data(filename)
-    data_dir = "data/Bonn_data/"
-    multiprocessing_func(data_dir)
-    #load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, num_classes=2)
+#if __name__ == "__main__":
+ ##     #data_dir = "data/train_data"
+ ##     # data_dir_test = "data/test_data"
+ ##     #data_dir = 'data/test_files'
+ ##     # # read_data_save_tfrecord(data_dir)
+    ## ddd = ["data/train_data", "data/test_data"]
+     ## ipdb.set_trace()
+     ## augment_data_with_ar1(filename)
+    ## for direc in ddd:
+    ##multiprocessing_func("data/train_data")
+ ##     # get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
+ ##     # multiprocessing_func(data_dir)
+ ##     # read_from_tfrecord("data/test_files/test_files.tfrecords")
+ ##     #read_tfrecord()
+ ##     #read_data_save_one_csv(data_dir_test)
+ ##     #filename = "data/train_data/train_data.csv"
+ ##     #read_data(filename)
+    #data_dir = "data/Bonn_data/"
+    #multiprocessing_func(data_dir)
+    ##load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, num_classes=2)
 
 
 #def put_kernels_on_grid (kernel, grid_Y, grid_X, pad = 1):

@@ -42,7 +42,86 @@ def get_variables_from_graph(layer, *args):
 
     return variable
 
+def put_kernels_on_grid (kernel, pad = 1):
 
+    '''Visualize conv. filters as an image (mostly for the 1st layer).
+    Arranges filters into a grid, with some paddings between adjacent filters.
+    Args:
+    kernel:            tensor of shape [Y, X, NumChannels, NumKernels]
+    pad:               number of black pixels around each filter (between them)
+    Return:
+    Tensor of shape [1, (Y+2*pad)*grid_Y, (X+2*pad)*grid_X, NumChannels].
+    https://gist.github.com/kukuruza/03731dc494603ceab0c5
+    '''
+    # get shape of the grid. NumKernels == grid_Y * grid_X
+    def factorization(n):
+        for i in range(int(np.sqrt(float(n))), 0, -1):
+            if n % i == 0:
+                if i == 1:
+                    print('Who would enter a prime number of filters')
+                return (i, int(n / i))
+                
+    (grid_Y, grid_X) = factorization (kernel.get_shape()[3].value)
+
+    print ('grid: %d = (%d, %d)' % (kernel.get_shape()[3].value, grid_Y, grid_X))
+
+    x_min = tf.reduce_min(kernel)
+    x_max = tf.reduce_max(kernel)
+    kernel = (kernel - x_min) / (x_max - x_min)  ### normalize the kernel
+
+    # pad X and Y
+    x = tf.pad(kernel, tf.constant( [[pad,pad],[pad, pad],[0,0],[0,0]] ), mode = 'CONSTANT')
+    print("tf.pad x.shape", x.shape.as_list()) ##(7, 3, 8, 16)
+    # X and Y dimensions, w.r.t. padding
+    Y = kernel.get_shape()[0] + 2 * pad
+    X = kernel.get_shape()[1] + 2 * pad
+    #ipdb.set_trace()
+    channels = kernel.get_shape()[2]    ## in channels
+    # put NumKernels to the 1st dimension
+    x = tf.transpose(x, (3, 0, 1, 2)) ###(16, 7, 3, 8)
+    print("tf.transpose(x, (3, 0, 1, 2)) x.shape", x.shape.as_list())
+    # organize grid on Y axis
+    x = tf.reshape(x, tf.stack([grid_X, Y * grid_Y, X, channels]))   ###(4, 28, 3, 8)
+    print("tf.reshape(x, tf.stack([grid_X, Y * grid_Y, X, channels])) x.shape", x.shape.as_list())
+    # switch X and Y axes
+    x = np.transpose(x, (0, 2, 1, 3))       ##(4, 3, 28, 8)
+    print("tf.transpose(x, (0, 2, 1, 3)) x.shape", x.shape.as_list())
+    # organize grid on X axis
+    x = tf.reshape(x, tf.stack([1, X * grid_X, Y * grid_Y, channels]))  ###(1, 12, 28, 8)
+    print("tf.reshape(x, tf.stack([1, X * grid_X, Y * grid_Y, channels])) x.shape", x.shape.as_list())
+
+    # back to normal order (not combining with the next step for clarity)
+    x = tf.transpose(x, (2, 1, 3, 0))   ###(28, 12, 8, 1)
+    print("tf.transpose(x, (2, 1, 3, 0)) x.shape", x.shape.as_list())
+
+    # to tf.image_summary order [batch_size, height, width, channels],
+    #   where in this case batch_size == 1
+    x = tf.transpose(x, (3, 0, 1, 2))   ###(1, 28, 12, 8)
+    print("tf.transpose(x, (3, 0, 1, 2)) x.shape", x.shape.as_list())
+
+    # scaling to [0, 255] is not necessary for tensorboard
+    return x
+
+def add_kernel_to_image_summary_with_scope(scope):
+    '''given a scope, add all the kernels to image summary as picture in grid'''
+    trainables = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, scope.name)
+    for ind, var in enumerate(trainables):
+        if 'kernel' in var.name and 'conv' in var.name:       
+            grid = put_kernels_on_grid(var, pad = 1)
+            tf.summary.image(var.name, grid, max_outputs=grid.shape[-1])
+
+def add_kernel_to_image_summary_from_kernels(kernels):
+    '''given a collection dict of all trainable kernels,
+    add all the kernels to image summary as picture in grid'''
+
+    for ind, kernel in enumerate(kernels):
+        if len(kernel.shape) == 4:
+            grid = put_kernels_on_grid (kernel, pad = 1)
+            tf.summary.image(var.name, grid, max_outputs=1)
+        elif len(kernel.shape) == 2:            
+            tf.summary.image(var.name, kernel, max_outputs=1)
+            
+#####################################################################################################3
 def fc_net(x, hid_dims=[500, 300, 100], num_classes = 2):
     net = tf.layers.flatten(x)
     # Convolutional Layer
@@ -404,11 +483,13 @@ def DilatedCNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, 
     return logits
 
 
+
 def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channels=3, pool_size=[2, 2], strides=[2, 2], filter_size=[3, 3], num_classes=10, fc=[500]):
     '''https://github.com/exelban/tensorflow-cifar-10/blob/master/include/model.py'''
     x = tf.reshape(x, [-1, seq_len, width, channels])   ###
+    activities = {}
     with tf.variable_scope('conv1') as scope:
-        conv = tf.layers.conv2d(
+        net = tf.layers.conv2d(
             inputs=x,
             filters=output_channels[0],
             kernel_size=filter_size[0],
@@ -416,27 +497,33 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
-        #conv = tf.layers.batch_normalization(conv)
-        print(scope.name + "shape", conv.shape.as_list())
-        conv = tf.layers.conv2d(
-            inputs=conv,
+        #ipdb.set_trace()
+        func.add_conved_image_to_summary(net, save_name='results/')
+        #activities[conv.name] = conv
+        #ipdb.set_trace()
+        #add_kernel_to_image_summary_with_scope(scope)
+        #func.add_conved_image_to_summary(conv)
+        print(scope.name + "shape", net.shape.as_list())
+    with tf.variable_scope('conv2_pool') as scope:
+        net = tf.layers.conv2d(
+            inputs=net,
             filters=output_channels[1],
             kernel_size=filter_size[0],
             padding='SAME',
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
-        grid = func.put_kernels_on_grid (kernel, pad = 1)
-        tf.image.summary('conv1/kernels', grid, max_outputs=1)
-        #tf.summary.image(scope.name+'/filters', )
-        #conv = tf.layers.batch_normalization(conv)
-        print(scope.name + "shape", conv.shape.as_list())
-        pool = tf.layers.max_pooling2d(conv, pool_size=pool_size, strides=strides, padding='SAME')
+        func.add_conved_image_to_summary(net, save_name='results/')
+        #activities[conv.name] = conv
+        #func.add_conved_image_to_summary(conv)
+        #add_kernel_to_image_summary_with_scope(scope)
+        print(scope.name + "shape", net.shape.as_list())
+        pool = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides, padding='SAME')
         drop = tf.layers.dropout(pool, rate=0.25, name=scope.name)###0.25
         print(scope.name + "shape", drop.shape.as_list())
 
-    with tf.variable_scope('conv2') as scope:
-        conv = tf.layers.conv2d(
+    with tf.variable_scope('conv3_pool') as scope:
+        net = tf.layers.conv2d(
             inputs=drop,
             filters=output_channels[2],
             kernel_size=filter_size[0],
@@ -444,10 +531,17 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
-        print(scope.name + "shape", conv.shape.as_list())
-        pool = tf.layers.max_pooling2d(conv, pool_size=pool_size, strides=strides, padding='SAME')
+        func.add_conved_image_to_summary(net, save_name='results/')
+        #activities[conv.name] = conv
+        #func.add_conved_image_to_summary(conv)
+        #add_kernel_to_image_summary_with_scope(scope)
+        print(scope.name + "shape", net.shape.as_list())
+        pool = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides, padding='SAME')
+        drop = tf.layers.dropout(pool, rate=0.25, name=scope.name)###0.25
         print(scope.name + "shape", pool.shape.as_list())
-        conv = tf.layers.conv2d(
+        
+    with tf.variable_scope('conv4_pool') as scope:
+        net = tf.layers.conv2d(
             inputs=pool,
             filters=output_channels[2],
             kernel_size=[2, 2],  #filter_size[1],    #
@@ -455,8 +549,11 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
-        print(scope.name + "shape", conv.shape.as_list())
-        pool = tf.layers.max_pooling2d(conv, pool_size=pool_size, strides=strides, padding='SAME')
+        func.add_conved_image_to_summary(net)
+        #activities[conv.name] = conv
+        #add_kernel_to_image_summary_with_scope(scope)
+        print(scope.name + "shape", net.shape.as_list())
+        pool = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides, padding='SAME')
         print(scope.name + "shape", pool.shape.as_list())
         drop = tf.layers.dropout(pool, rate=0.25, name=scope.name)   ###0.25
 
@@ -466,7 +563,9 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
         
         for ind, units in enumerate(fc):
             net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.relu)
+            #activities[net.name] = net
             net = tf.layers.dropout(net, rate=0.5)
+            
             print(scope.name + "shape", net.shape.as_list())
         tf.summary.histogram("dense_out", net)
         #ipdb.set_trace()
@@ -481,12 +580,11 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
     all_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
     kernels = {}
     for var in all_trainable_vars:
-        if 'kernel' in var.name:
-            kernels[var.name] = var
-    
-    
+        if 'kernel' in var.name:            
+                kernels[var.name] = var
+            
+       
     return logits, kernels
-
 
 
 def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, channels=3, pool_size=[2, 2], strides=[2, 2], filter_size=[3, 3], num_classes=10, fc=[500]):

@@ -32,12 +32,12 @@ def lr(epoch):
 
 datetime = "{0:%Y-%m-%dT%H-%M-%S}".format(datetime.datetime.now())
 plot_every = 500
-save_every = 20
+save_every = 1
 height, width, channels = 32, 32, 3 #seq_len, 1     # MNIST
 batch_size = 128 # old: 16     20has a very good result
 num_classes = 10
 #pattern='ds_8*.csv'
-version = 'CNN_Tutorial_Resi'  #'CNN_tutorial' #'AggResNet'  #'Resi_HighwayFNN'  #'Plain_CNN'   ## 'CNN'  ###'Inception'   #            #DilatedCNNDeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
+version = 'CNN_tutorial'  #'CNN_tutorial' #'AggResNet'  #'Resi_HighwayFNN'  #'Plain_CNN'   ## 'CNN'  ###'Inception'   #            #DilatedCNNDeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4])       #### DeepConvLSTMDeepCLSTM
 data_dir = 'cifar_data/cifar10/'
 results_dir= "results/3-CIFAR10_checks/" + version + '/batch{}/' .format(batch_size)+ datetime
 logdir = results_dir+ "/model"
@@ -58,27 +58,81 @@ data_test = data_test / 255.0
 y_train = np.squeeze(y_train)
 y_test = np.squeeze(y_test)
 
-epochs = 500
-total_batches =  len(data_train) // batch_size #5001               #
+epochs = 251
+total_batches =  len(data_train) // (10* batch_size) #5001               #
+print('num_train', len(data_train), 'total batches', total_batches)
+
+def evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, save_name='results/'):
+
+    x_test, y_test = test_data
+    test_labels = np.eye(num_classes)[y_test]
+
+    acc_epoch_test = 0
+    loss_epoch_test = 0
+    ### test on the whole test set
+    for k in range(len(x_test) // batch_size):
+        test_batch = x_test[k*batch_size : (k+1)*batch_size]
+        test_labels = np.eye(num_classes)[y_test[k*batch_size : (k+1)*batch_size]]
+
+        test_acc, test_cost, train_vars, out_logits = sess.run([accuracy, cost, kernels, outputs], {x: test_batch, y: test_labels, learning_rate:lr(epoch)})   # test_acc_sum, sensitivity_sum, specificity_sum,
+        acc_epoch_test += test_acc
+        loss_epoch_test += test_cost
+
+        #labels = np.argmax(out_logits)
+    acc_epoch_test /= (k + 1)
+    loss_epoch_test /= (k + 1)
+
+    #ipdb.set_trace()
+    if epoch % 3 == 0:
+        for ind, var in enumerate(train_vars):
+            if 'fully' in var:
+                if train_vars[var].shape[-1] > num_classes:
+                    plt.imshow(train_vars[var], cmap='viridis', aspect='auto')
+                    plt.title(var + '-' + np.str(train_vars[var].shape))
+                    plt.ylabel('in unit index')
+                    plt.xlabel('out unit index')
+                    plt.savefig(save_name + '/fully-hid-' + np.str(train_vars[var].shape)+'-epoch-{}.png'.format(epoch), format='png')
+                    plt.close()
+                else:
+                    #for ind in range(train_vars[var].shape[-1]):
+                        #plt.plot(train_vars[var][:, ind], label='label-{}'.format(ind))
+                    plt.imshow(train_vars[var], cmap='viridis', aspect='auto')
+                    #plt.legend(loc='best')
+                    plt.ylabel('in unit index')
+                    plt.xlabel('out unit index')
+                    plt.savefig(save_name + '/fully-logits-imshow' + np.str(train_vars[var].shape)+'-epoch-{}.png'.format(epoch), format='png')
+                    plt.close()
+        #elif 'conv' in var:
+            #func.put_kernels_on_grid(train_vars[var], pad = 1, save_name=save_name+'/conv_kernel')
+    #for ind, net in enumerate(acti):
+        #if 'conv' in net:
+            #func.plot_conved_image(net, save_name=save_name+'/'+net[0:5])
+            
+
+    
+    return acc_epoch_test, loss_epoch_test
+
+
+    
 
 ### construct the network
 def train(x):
 
     #### Constructing the network
-    #outputs = mod.fc_net(x, hid_dims=[500, 300], num_classes = num_classes)   ##
-    #outputs = mod.resi_net(x, hid_dims=[500, 300], seq_len=height, width=width, channels=channels, num_blocks=2, num_classes = num_classes)   ## works, not amazing
-    #outputs = mod.CNN(x, output_channels=[16, 32, 64], num_block=3, filter_size=[3, 3], strides=[2, 2], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
-    #outputs = mod.Plain_CNN(x, output_channels=[32, 64, 128], num_block=3, pool_size=[2, 2], filter_size=[3, 3], strides=[2, 2], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
+    #outputs, kernels = mod.fc_net(x, hid_dims=[500, 300], num_classes = num_classes)   ##
+    #outputs, kernels = mod.resi_net(x, hid_dims=[500, 300], seq_len=height, width=width, channels=channels, num_blocks=2, num_classes = num_classes)   ## works, not amazing
+    #outputs, kernels = mod.CNN(x, output_channels=[16, 32, 64], num_block=3, filter_size=[3, 3], strides=[2, 2], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
+    #outputs, kernels = mod.Plain_CNN(x, output_channels=[32, 64, 128], num_block=3, pool_size=[2, 2], filter_size=[3, 3], strides=[2, 2], seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
     
-    #outputs = mod.DeepConvLSTM(x, output_channels=[8, 16, 32], filter_size=[3, 3], num_lstm=64, pool_size=[2, 2], strides=[2, 2],  group_size=1, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
-    #outputs = mod.RNN(x, num_lstm=64, seq_len=height, width=width, num_classes = num_classes)   ##ok
-    #outputs = mod.Atrous_CNN(x, output_channels_cnn=[4, 8, 16], dilation_rate=[[2,2], [4, 4], [8, 8]], kernel_size = [3, 3], seq_len=height, width=width, channels=channels, num_classes = num_classes) ##ok
-    #outputs = mod.Inception(x, filter_size=[[3, 3], [5, 5]],num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
+    #outputs, kernels = mod.DeepConvLSTM(x, output_channels=[8, 16, 32], filter_size=[3, 3], num_lstm=64, pool_size=[2, 2], strides=[2, 2],  group_size=1, seq_len=height, width=width, channels=channels, num_classes = num_classes)  ## ok
+    #outputs, kernels = mod.RNN(x, num_lstm=64, seq_len=height, width=width, num_classes = num_classes)   ##ok
+    #outputs, kernels = mod.Atrous_CNN(x, output_channels_cnn=[4, 8, 16], dilation_rate=[[2,2], [4, 4], [8, 8]], kernel_size = [3, 3], seq_len=height, width=width, channels=channels, num_classes = num_classes) ##ok
+    #outputs, kernels = mod.Inception(x, filter_size=[[3, 3], [5, 5]],num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
 
-    #outputs = mod.Inception_complex(x, output_channels=[16, 32], filter_size=[[3, 3], [5, 5]], pool_size=[2, 2], strides=[2, 2], num_blocks=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
-    #outputs, fc_act = mod.AggResNet(x, output_channels=[16, 32, 64], num_stacks=[3, 3, 3], cardinality=16, seq_len=height, width=width, channels=channels, filter_size=[[3, 3], [2, 2]], pool_size=[2, 2], strides=[2, 2], fc1=200, num_classes=num_classes)   ## output_channels should be the same length as num_subBlocks
-    #outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=height, width=width, channels=channels, pool_size=[2, 2], strides=[2, 2], filter_size=[[3, 3], [2, 2]], num_classes=num_classes, fc1=1500)### this works very well on both
-    outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, pool_size=[2, 2], strides=[2, 2], filter_size=[[3, 3], [2, 2]], num_classes=num_classes, fc1=200)###
+    #outputs, kernels = mod.Inception_complex(x, output_channels=[16, 32], filter_size=[[3, 3], [5, 5]], pool_size=[2, 2], strides=[2, 2], num_blocks=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
+    #outputs, kernels = mod.AggResNet(x, output_channels=[16, 32, 64], num_stacks=[3, 3, 3], cardinality=16, seq_len=height, width=width, channels=channels, filter_size=[[3, 3], [2, 2]], pool_size=[2, 2], strides=[2, 2], fc1=200, num_classes=num_classes)   ## output_channels should be the same length as num_subBlocks
+    outputs, kernels = mod.CNN_Tutorial(x, output_channels=[32, 64, 64], seq_len=height, width=width, channels=channels, pool_size=[2, 2], strides=[2, 2], filter_size=[[3, 3], [2, 2]], num_classes=num_classes, fc=[500])### this works very well on both
+    #outputs, kernels = mod.CNN_Tutorial_Resi(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, pool_size=[2, 2], strides=[2, 2], filter_size=[[3, 3], [2, 2]], num_classes=num_classes, fc1=200)###
     #ipdb.set_trace()
 
     with tf.name_scope("loss"):
@@ -137,46 +191,49 @@ def train(x):
                 batch_data = data_train[batch*batch_size : (batch+1)*batch_size]
                 batch_labels = np.eye(num_classes)[y_train[batch*batch_size : (batch+1)*batch_size]]
 
-                _, acc, c, summary = sess.run([optimizer, accuracy, cost, summaries], feed_dict={x: batch_data, y: batch_labels, learning_rate:lr(epoch)})
+                _, acc, c = sess.run([optimizer, accuracy, cost], feed_dict={x: batch_data, y: batch_labels, learning_rate:lr(epoch)})
 
                 acc_epoch_train += acc
                 loss_epoch_train += c
                 ### Test
-                if batch % (total_batches//3) == 0:
-                    acc_epoch_test = 0
-                    loss_epoch_test = 0
-                    ### test on the whole test set
-                    for k in range(len(data_test) // batch_size):
-                        test_data = data_test[k*batch_size : (k+1)*batch_size]
-                        test_labels = np.eye(num_classes)[y_test[k*batch_size : (k+1)*batch_size]]
+                #if batch % (total_batches//3) == 0:
+                    #acc_epoch_test = 0
+                    #loss_epoch_test = 0
+                    #### test on the whole test set
+                    #(data_test, y_test)
+                    #for k in range(len(data_test) // batch_size):
+                        #test_data = data_test[k*batch_size : (k+1)*batch_size]
+                        #test_labels = np.eye(num_classes)[y_test[k*batch_size : (k+1)*batch_size]]
 
-                        test_acc, test_cost = sess.run([accuracy, cost], {x: test_data, y: test_labels, learning_rate:lr(epoch)})   # test_acc_sum, sensitivity_sum, specificity_sum,
-                        acc_epoch_test += test_acc
-                        loss_epoch_test += test_cost
+                        #test_acc, test_cost = sess.run([accuracy, cost], {x: test_data, y: test_labels, learning_rate:lr(epoch)})   # test_acc_sum, sensitivity_sum, specificity_sum,
+                        #acc_epoch_test += test_acc
+                        #loss_epoch_test += test_cost
                         
-                    acc_epoch_test = acc_epoch_test/ (k + 1)
-                    loss_epoch_test = loss_epoch_test/ (k + 1)
-                    print("epoch", epoch, "batch", batch, 'loss', c, 'train_accuracy', acc, "test_acc", test_acc)
-                    ########################################################
-
-                if batch % 20 == 0:
+                    #acc_epoch_test = acc_epoch_test/ (k + 1)
+                    #loss_epoch_test = loss_epoch_test/ (k + 1)
+                if batch % 100 == 0:
+                    summary = sess.run(summaries, feed_dict={x: batch_data, y: batch_labels, learning_rate:lr(epoch)})
                     print("epoch", epoch, "batch", batch, 'loss', c, 'train_accuracy', acc)
+                    #######################################################
                     
-                writer.add_summary(summary, batch)
-
+                    writer.add_summary(summary, epoch*total_batches+batch)
                 
+            if epoch % 1 == 0:                
+                acc_test, loss_test = evaluate_on_test(sess, epoch, accuracy, cost, outputs, (data_test, y_test), kernels, save_name=results_dir)
+                print("epoch", epoch, "batch", batch, 'loss', c, 'train_accuracy', acc, 'test_acc', acc_test)
                 
             acc_epoch_train = acc_epoch_train / total_batches * 1.0
             loss_epoch_train = loss_epoch_train / total_batches * 1.0
 
             if epoch % save_every == 0:
-                saver.save(sess, logdir + '/batch' + str(batch))
+                func.save_model(saver, sess, logdir, epoch)
+                last_saved_step = epoch
 
             # track training and testing
             loss_total_train.append(loss_epoch_train)            
             acc_total_train.append(acc_epoch_train)
-            loss_total_test.append(loss_epoch_test)            
-            acc_total_test.append(acc_epoch_test)
+            loss_total_test.append(loss_test)            
+            acc_total_test.append(acc_test)
 
             if epoch % 1 == 0:
                 if epoch < 2 :
@@ -188,7 +245,7 @@ def train(x):
 
                 func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], colors=['c', 'm'], xlabel= 'training epochs',ifsmooth=False, ylabel="loss", title='Loss',labels=['training', 'testing'], save_name=results_dir+ "/losses_epoch_{}".format(epoch))
 
-                func.save_data((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test', save_name=results_dir + '/' +'epoch_accuracy.csv') 
+                func.save_data_to_csv((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test', save_name=results_dir + '/' +'epoch_accuracy.csv') 
         
 
         
