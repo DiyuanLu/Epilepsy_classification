@@ -59,7 +59,7 @@ y_train = np.squeeze(y_train)
 y_test = np.squeeze(y_test)
 
 epochs = 251
-total_batches =  len(data_train) // (10* batch_size) #5001               #
+total_batches =  len(data_train) // (20* batch_size) #5001               #
 print('num_train', len(data_train), 'total batches', total_batches)
 
 def evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, save_name='results/'):
@@ -85,25 +85,28 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, s
     #ipdb.set_trace()
     if epoch % 3 == 0:
         for ind, var in enumerate(train_vars):
-            if 'fully' in var:
-                if train_vars[var].shape[-1] > num_classes:
-                    plt.imshow(train_vars[var], cmap='viridis', aspect='auto')
-                    plt.title(var + '-' + np.str(train_vars[var].shape))
-                    plt.ylabel('in unit index')
-                    plt.xlabel('out unit index')
-                    plt.savefig(save_name + '/fully-hid-' + np.str(train_vars[var].shape)+'-epoch-{}.png'.format(epoch), format='png')
-                    plt.close()
-                else:
+            #if 'fully' in var:
+                #if train_vars[var].shape[-1] > num_classes:
+                    #plt.imshow(train_vars[var], cmap='viridis', aspect='auto')
+                    #plt.title(var + '-' + np.str(train_vars[var].shape))
+                    #plt.ylabel('in unit index')
+                    #plt.xlabel('out unit index')
+                    #plt.colorbar()
+                    #plt.savefig(save_name + '/fully-hid-' + np.str(train_vars[var].shape)+'-epoch-{}.png'.format(epoch), format='png')
+                    #plt.close()
+                #else:
+                    
                     #for ind in range(train_vars[var].shape[-1]):
                         #plt.plot(train_vars[var][:, ind], label='label-{}'.format(ind))
-                    plt.imshow(train_vars[var], cmap='viridis', aspect='auto')
-                    #plt.legend(loc='best')
-                    plt.ylabel('in unit index')
-                    plt.xlabel('out unit index')
-                    plt.savefig(save_name + '/fully-logits-imshow' + np.str(train_vars[var].shape)+'-epoch-{}.png'.format(epoch), format='png')
-                    plt.close()
-        #elif 'conv' in var:
-            #func.put_kernels_on_grid(train_vars[var], pad = 1, save_name=save_name+'/conv_kernel')
+                    ##plt.imshow(train_vars[var], cmap='viridis', aspect='auto')
+                    ##plt.legend(loc='best')
+                    #plt.ylabel('in unit index')
+                    #plt.xlabel('out unit index')
+                    #plt.savefig(save_name + '/fully-logits-imshow' + np.str(train_vars[var].shape)+'-epoch-{}.png'.format(epoch), format='png')
+                    #plt.close()
+            if 'conv' in var:
+                ipdb.set_trace()
+                func.put_kernels_on_grid(train_vars[var], pad=1, save_name=save_name+'/conv_kernel', mode='imshow')
     #for ind, net in enumerate(acti):
         #if 'conv' in net:
             #func.plot_conved_image(net, save_name=save_name+'/'+net[0:5])

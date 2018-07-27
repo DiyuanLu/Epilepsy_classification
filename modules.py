@@ -487,6 +487,9 @@ def DilatedCNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, 
 def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channels=3, pool_size=[2, 2], strides=[2, 2], filter_size=[3, 3], num_classes=10, fc=[500]):
     '''https://github.com/exelban/tensorflow-cifar-10/blob/master/include/model.py'''
     x = tf.reshape(x, [-1, seq_len, width, channels])   ###
+    for ind in range(3):
+        tf.summary.image('image_ori{}'.format(ind), tf.reshape(x[ind,...], [-1, seq_len, width, channels]))
+        
     activities = {}
     with tf.variable_scope('conv1') as scope:
         net = tf.layers.conv2d(
@@ -498,8 +501,8 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             activation=tf.nn.relu
         )
         #ipdb.set_trace()
-        func.add_conved_image_to_summary(net, save_name='results/')
-        #activities[conv.name] = conv
+        func.add_conved_image_to_summary(net)
+        activities[net.name] = net
         #ipdb.set_trace()
         #add_kernel_to_image_summary_with_scope(scope)
         #func.add_conved_image_to_summary(conv)
@@ -513,8 +516,8 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
-        func.add_conved_image_to_summary(net, save_name='results/')
-        #activities[conv.name] = conv
+        func.add_conved_image_to_summary(net)
+        activities[net.name] = net
         #func.add_conved_image_to_summary(conv)
         #add_kernel_to_image_summary_with_scope(scope)
         print(scope.name + "shape", net.shape.as_list())
@@ -531,8 +534,8 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
-        func.add_conved_image_to_summary(net, save_name='results/')
-        #activities[conv.name] = conv
+        func.add_conved_image_to_summary(net)
+        activities[net.name] = net
         #func.add_conved_image_to_summary(conv)
         #add_kernel_to_image_summary_with_scope(scope)
         print(scope.name + "shape", net.shape.as_list())
@@ -550,7 +553,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             activation=tf.nn.relu
         )
         func.add_conved_image_to_summary(net)
-        #activities[conv.name] = conv
+        activities[net.name] = net
         #add_kernel_to_image_summary_with_scope(scope)
         print(scope.name + "shape", net.shape.as_list())
         pool = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides, padding='SAME')
@@ -563,7 +566,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
         
         for ind, units in enumerate(fc):
             net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.relu)
-            #activities[net.name] = net
+            activities[net.name] = net
             net = tf.layers.dropout(net, rate=0.5)
             
             print(scope.name + "shape", net.shape.as_list())
@@ -584,7 +587,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
                 kernels[var.name] = var
             
        
-    return logits, kernels
+    return logits, kernels, activities
 
 
 def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, channels=3, pool_size=[2, 2], strides=[2, 2], filter_size=[3, 3], num_classes=10, fc=[500]):

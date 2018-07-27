@@ -742,7 +742,7 @@ def plot_auc_curve(labels, predictions, save_name='results/'):
     plt.savefig(save_name + 'auc_curve.png', format='png')
     plt.close()
 
-def put_kernels_on_grid(kernel, pad = 1, save_name='kernel'):
+def put_kernels_on_grid(kernel, pad = 1, save_name='kernel', mode='imshow'):
 
     '''Visualize conv. filters as an image (mostly for the 1st layer).
     Arranges filters into a grid, with some paddings between adjacent filters.
@@ -765,6 +765,8 @@ def put_kernels_on_grid(kernel, pad = 1, save_name='kernel'):
 
     print ('grid: %d = (%d, %d)' % (kernel.shape[3], grid_Y, grid_X))
 
+    if mode == 'plot':
+        pad = 0
     
     x_min = np.min(kernel)
     x_max = np.max(kernel)
@@ -777,33 +779,39 @@ def put_kernels_on_grid(kernel, pad = 1, save_name='kernel'):
     X = kernel.shape[1] + 2 * pad
     #ipdb.set_trace()
     channels = kernel.shape[2]    ## in channels
-    print('channels', channels)
+    #print('channels', channels)
     # put NumKernels to the 1st dimension
     x = np.transpose(x, (3, 0, 1, 2)) ###(16, 7, 3, 8)
-    print('x.shape', x.shape)
+    #print('x.shape', x.shape)
     # organize grid on Y axis
     x = x.reshape(grid_X, Y * grid_Y, X, channels)   ###(4, 28, 3, 8)
-    print('x.shape', x.shape)
+    #print('x.shape', x.shape)
     # switch X and Y axes
     x = np.transpose(x, (0, 2, 1, 3))       ##(4, 3, 28, 8)
-    print('x.shape', x.shape)
+    #print('x.shape', x.shape)
     # organize grid on X axis
     x = np.reshape(x, [1, X * grid_X, Y * grid_Y, channels])  ###(1, 12, 28, 8)
-    print('x.shape', x.shape)
+    #print('x.shape', x.shape)
     # back to normal order (not combining with the next step for clarity)
     x = np.transpose(x, (2, 1, 3, 0))   ###(28, 12, 8, 1)
-    print('x.shape', x.shape)
+    #print('x.shape', x.shape)
     # to np.image_summary order [batch_size, height, width, channels],
     #   where in this case batch_size == 1
     x = np.transpose(x, (3, 0, 1, 2))   ###(1, 28, 12, 8)
-    print('x.shape', x.shape)
+    #print('x.shape', x.shape)
 
     plt.figure()
+    ipdb.set_trace()
     for ind in range(x.shape[-1]):
-        #plt.subplot(grid_X, grid_Y, ind+1)
-        plt.imshow(x[0, :, :, ind], interpolation='nearest', aspect='auto')
-        plt.savefig(save_name + "-channel{}.png".format(ind), format='png')
-        plt.close()
+        if mode == 'imshow':
+            plt.imshow(x[0, :, :, ind], interpolation='nearest', aspect='auto')
+            plt.savefig(save_name + "-channel{}.png".format(ind), format='png')
+            plt.close()
+        if mode == 'plot':
+
+            plt.plot(x[0, :, ind, 0])
+            plt.savefig(save_name + "-channel{}.png".format(ind), format='png')
+            plt.close()
 
 
 def add_conved_image_to_summary(net, save_name='results/'):
@@ -817,8 +825,8 @@ def add_conved_image_to_summary(net, save_name='results/'):
                 if i == 1:
                     print('Who would enter a prime number of filters')
                 return (i, int(n / i))
-
-    num_kernels = net.shape[3].value
+    #ipdb.set_trace()
+    channels = net.shape[3].value
     ix, iy = net.shape[2].value, net.shape[1].value
     print("ix, iy", ix, iy)
     (cy, cx) = factorization(net.shape[3].value)
@@ -827,7 +835,6 @@ def add_conved_image_to_summary(net, save_name='results/'):
     for ind in range(3):
         image_ori = net[ind,...]
         print("image_ori", image_ori.shape)
-        tf.summary.image('image_ori{}'.format(ind), image_ori)
         #ipdb.set_trace()
         image = tf.pad(image_ori, tf.constant( [[pad,pad],[pad, pad],[0,0]] ), mode = 'CONSTANT')
         ix_pad = image.shape[1].value
