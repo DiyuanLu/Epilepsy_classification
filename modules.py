@@ -294,7 +294,7 @@ def CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], strides
                             filters = output_channels[0],
                             kernel_size = filter_size,
                             padding= "same",
-                            activation = tf.nn.relu)
+                            activation = tf.nn.leaky_relu)
     net = tf.layers.batch_normalization(net, center = True, scale = True)
     #net = tf.nn.relu(net)
     print("b4_blocks", net.shape.as_list())
@@ -498,7 +498,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_size=filter_size[0],
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.relu
+            activation=tf.nn.leaky_relu
         )
         #ipdb.set_trace()
         func.add_conved_image_to_summary(net)
@@ -514,7 +514,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_size=filter_size[0],
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.relu
+            activation=tf.nn.leaky_relu
         )
         func.add_conved_image_to_summary(net)
         activities[net.name] = net
@@ -532,7 +532,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_size=filter_size[0],
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.relu
+            activation=tf.nn.leaky_relu
         )
         func.add_conved_image_to_summary(net)
         activities[net.name] = net
@@ -550,7 +550,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_size=[2, 2],  #filter_size[1],    #
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.relu
+            activation=tf.nn.leaky_relu
         )
         func.add_conved_image_to_summary(net)
         activities[net.name] = net
@@ -565,7 +565,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
         print(scope.name + "shape", net.shape.as_list())
         
         for ind, units in enumerate(fc):
-            net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.relu)
+            net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.leaky_relu)
             activities[net.name] = net
             net = tf.layers.dropout(net, rate=0.5)
             
@@ -813,6 +813,7 @@ def RNN_Tutorial(x, num_rnn=[100, 100], seq_len=10240, width=2, num_seg=119, cha
         outputs, _ =tf.nn.static_rnn(rnn_layer, net, dtype="float32", scope=scope)
         #print("lstm {} out".format(ind), outputs.shape)
         net = tf.layers.batch_normalization(outputs[-1], center = True, scale = True)
+        #ipdb.set_trace()
         tf.summary.histogram('pre_activation', net)
         net = tf.layers.dense(inputs=net, units=fc[0], activation=None)
         #net = tf.layers.batch_normalization(net)

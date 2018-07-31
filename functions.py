@@ -32,7 +32,7 @@ import matplotlib
 
 ########################### model ######################
 def lr(epoch):
-    learning_rate = 0.01
+    learning_rate = 0.001
     if epoch > 120:
         learning_rate *= 0.5e-3
     elif epoch > 100:
@@ -83,7 +83,6 @@ def load_model(saver, sess, save_dir):
         print(' No checkpoint found.')
         return None
         
-
 
 ###################### files operation##########################
 def find_files(directory, pattern='Data*.csv', withlabel=True):
@@ -856,7 +855,83 @@ def add_conved_image_to_summary(net, save_name='results/'):
         #plt.imshow(net[0, :, :, 0], interpolation='nearest', aspect='auto')
         #plt.savefig(save_name+'-net_output.png', format='png')
         #plt.close()
-    
+
+def plot_fully_activation_with_ori(original_data, activation, label, epoch=0, Fs=173.16, NFFT=256, save_name='results/'):
+    '''plot the fully connected layer activation with original signal and its spectrogram
+    Param:
+        original_data: 1D array seq_len*1
+        activation: 1d array 1*(num_seg*fully_unit))   # concat the segments from one sample together
+        label: int'''
+
+    fig = plt.figure(figsize=(10, 8))
+    ori_len = original_data.size
+    ### plot the original signal for visualizaiont
+    ax0 = fig.add_subplot(3, 1, 1)
+    plt.plot(np.arange(ori_len)/Fs, original_data, 'm')
+    plt.xlim([0, ori_len/Fs])
+    plt.title('Original signal (lable: {})'.format(label))
+    plt.xlabel('time / s')
+    ### plot spectrogram
+    ax1 = fig.add_subplot(3, 1, 2)
+    spec = plt.specgram(original_data, NFFT=NFFT, Fs=Fs)
+    (Spec, f, t) = spec[0], spec[1], spec[2]             
+    plt.title('Spectrogram of orginal signal')
+    plt.xlabel('time / s')
+    plt.ylabel('frequency')
+    plt.xlim([0, t[-1]])
+    plt.ylim([0, f[-1]])
+
+    ### plot activation
+    ax2 = fig.add_subplot(3, 1, 3)
+    plt.plot(activation, 'royalblue')
+    plt.ylabel('activation')
+    plt.xlim([0, activation.size])
+    plt.setp(ax2.get_xticklabels(), visible = False)
+    plt.setp(ax2.get_yticklabels(), visible = False)
+    plt.tight_layout()
+    plt.savefig(save_name + '_label_{}_activity-epoch-{}.png'.format(label, epoch), format='png')
+    plt.close()
+
+def factorization(n):
+    for i in range(int(np.sqrt(float(n))), 0, -1):
+        if n % i == 0:
+            if i == 1:
+                print('Who would enter a prime number of filters')
+            return (i, int(n / i))
+
+
+
+def plot_conv_activation_with_ori(original_data, activation, label, epoch=0, Fs=173.16, NFFT=256, save_name='results/'):
+    '''plot the activiation of all the kernels in a grid with original signal for vis
+    Param:
+        original_data: 1D array seq_len*1
+        activation: height*width*channels
+        label: int
+        '''
+    fig = plt.figure(figsize=(10, 8))
+    count = 0
+    length = original_data.size
+    (grid_Y, grid_X) = factorization(activation.shape[2])        ## get the grid size
+    ### plot the original signal for visualizaiont
+    ax = fig.add_subplot(grid_Y+1, grid_X, (1, grid_X))
+    ax.plot(np.arange(length)/Fs, original_data, 'm')
+    plt.xlim([0, length/Fs])
+    plt.title('Original signal (lable: {})'.format(label))
+    plt.setp(ax.get_xticklabels(), visible = False)
+    plt.setp(ax.get_yticklabels(), visible = False)
+    plt.xlabel('time / s')
+    #### plot the acitivations
+    for row in range(grid_Y):                            
+        for col in range(grid_X):
+            ax = plt.subplot(grid_Y+1, grid_X, count+grid_X+1)
+            plt.plot(activation[:, 0, count])                               
+            plt.setp(ax.get_xticklabels(), visible = False)
+            plt.setp(ax.get_yticklabels(), visible = False)
+            plt.xlim([0, activation[:, 0, count].size])
+            count += 1
+    plt.tight_layout()
+    plt.savefig(save_name + '_label_{}_activity-epoch-{}.png'.format(label, epoch), format='png')
+    plt.close()
 ####################### Data munipulation##########################
 
 # #

@@ -14,7 +14,7 @@ import pickle
 from sklearn.model_selection import train_test_split
 import argparse
 import sys
-import json
+#import json
 #from sklearn.metrics import roc_auc_score
 
 def get_arguments():
@@ -49,9 +49,9 @@ ori_len = 10240
 seq_len = 10240  #1280   ## 
 start = 0
 ifnorm = True
-ifcrop = False   #True
+ifcrop = False   #True    ###
 if ifcrop:
-    crop_len = 10000
+    crop_len = 9000
     seq_len = crop_len
 else:
     crop_len = seq_len
@@ -62,7 +62,7 @@ width = 2  # with augmentation 2   ### data width
 channels = 1
 ifslide = True  #False    ## 
 if ifslide:
-    seq_len = 166           ## 86 is from the correlation distribution result
+    seq_len = 80           ## 86 is from the correlation distribution result
     majority_vote = True
     post_process = 'majority_vote'   #'averaging_window'    ## 
     num_seg = ori_len // seq_len   
@@ -80,7 +80,7 @@ y = tf.placeholder('float32')
 learning_rate = tf.placeholder('float32')
 
 
-batch_size = 5  # old: 16     20has a very good result
+batch_size = 2  # old: 16     20has a very good result
 num_classes = 2
 epochs = 51
 num_train = 6000#
@@ -90,14 +90,14 @@ test_dir = 'data/Whole_data/test_data/'
 vali_dir = 'data/Whole_data/validate_data/'
 pattern='Data*.csv'
 
-mod_params = './module_params.json'
-with open(mod_params, 'r') as f:
-    params = json.load(f)
+#mod_params = './module_params.json'
+#with open(mod_params, 'r') as f:
+    #params = json.load(f)
 
-version = 'whole_{}_CNN_Tutorial'.format(pattern[0:4])# AggResNet CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
+version = 'whole_{}_RNN_Tutorial'.format(pattern[0:4])# AggResNet CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
 
-#rand_seed = np.random.choice(200000)
-rand_seed = 922
+rand_seed = np.random.choice(200000)
+#rand_seed = 922
 np.random.seed(rand_seed)
 print('rand seed', rand_seed)
 
@@ -222,14 +222,15 @@ def train(x):
     #outputs = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
     #outputs, pre = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], fc=[500], num_classes=num_classes)
 
-    outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[3, 1], filter_size=[[5, 1], [3, 1]], fc=[100]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[3, 1], strides=[2, 1], filter_size=[[9, 1], [5, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
     #outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[250]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
     #outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
-    #outputs = mod.RNN_Tutorial(x, num_lstm=[100, 100], seq_len=height, width=width, channels=channels, fc=[100, 100], drop_rate=0.5, group_size=2, num_classes = num_classes)
+    #outputs, kernels = mod.RNN_Tutorial(x, num_rnn=[50, 50], seq_len=height, width=width, channels=channels, fc=[50, 50], drop_rate=0.5, group_size=1, num_classes = num_classes)
     #ipdb.set_trace()
     #### specify logdir
-    results_dir= 'results/' + version + '/cpu-batch{}/seg_len166-conv5,3-p4-s3-conv8-16-32-fc100-'.format(batch_size)+ datetime
+    results_dir= 'results/' + version + '/cpu-batch{}/seg_len80-conv8-16-32-f9-f5-p3-s2-fc200-lr0.01-'.format(batch_size)+ datetime
     #cnv4_lstm64testcrop10000-add-noise-CNN-dropout0.3-'.format(batch_size, num_seg, majority_vote)
+    ##seg_len166-conv5,3-p4-s3-conv8-16-32-fc100-
     logdir = results_dir+ '/model'
 
     ### Load model if specify

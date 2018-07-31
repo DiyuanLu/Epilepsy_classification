@@ -129,6 +129,17 @@ def plotSpectrum(data,Fs, color='c', label='x'):
     plt.xlabel('Freq (Hz)')
     plt.ylabel('|Y(freq)|')
 
+def plot_spectrogram(data, fs=512):
+    spec = plt.specgram(data, cmap='viridis', NFFT=256, Fs=fs)
+    (Spec, f, t) = spec[0], spec[1], spec[2]             
+    plt.title('Spectrogram of orginal signal')
+    plt.xlabel('time / s')
+    plt.ylabel('frequency')
+    plt.xlim([0, t[-1]])
+    plt.ylim([0, f[-1]])
+
+
+                    
 def plotPowerSpectrum(data, Fs, color='m', label='x', title='Power spectral density'):
     f, Pxx_den = signal.welch(data[:, 0], Fs, window='hanning', nperseg=512, noverlap=128)
     #plt.semilogy(f, Pxx_den, color, label=label)
