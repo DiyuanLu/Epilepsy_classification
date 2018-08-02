@@ -48,7 +48,6 @@ save_every = 2
 test_every = 100
 smooth_win_len = 20
 ori_len = 4097  #1280   ## 
-start = 0
 ifnorm = True
 width = 1  # with augmentation 2   ### data width
 channels = 1
@@ -78,12 +77,12 @@ y = tf.placeholder('float32')
 learning_rate = tf.placeholder('float32')
 ifcrop = False   #True
 if ifcrop:
-    crop_len = 10000
-    seq_len = crop_len
+    crop_len = 3500
 else:
-    crop_len = seq_len
+    crop_len = ori_len
 
-batch_size = 16  # old: 16     20has a very good result
+
+batch_size = 8  # old: 16     20has a very good result
 num_classes = 3
 epochs = 91
 header = None
@@ -96,8 +95,9 @@ pattern='*.csv'
 #mod_params = './module_params.json'
 #with open(mod_params, 'r') as f:
     #params = json.load(f)
-
-version = 'Bonn_AggResNet'#CNN_Tutorial  CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
+model_name = 'CNN_Tutorial_Resi'
+version = 'Bonn_{}'.format( model_name)
+#CNN_Tutorial  CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
 
 rand_seed = np.random.choice(200000)
 #rand_seed = 922
@@ -253,13 +253,13 @@ def train(x):
     #outputs, kernels = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
     #outputs, kernels = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[3, 1], pool_size=[2, 1], strides=[2, 1], fc=[100], num_classes=num_classes)
 
-    outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[3, 1], strides=[2, 1], filter_size=[[5, 1], [3, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
-    #outputs, kernels = mod.CNN_Tutorial(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[250]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
-    #outputs, kernels = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
+    #if model_name == 'CNN_Tutorial': outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[3, 1], strides=[2, 1], filter_size=[[5, 1], [3, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+   
+    if model_name == 'CNN_Tutorial_Resi': outputs, kernels = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 32], seq_len=height, width=width, channels=1, pool_size=[3, 1], strides=[2, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
     #outputs, kernels = mod.RNN_Tutorial(x, num_rnn=[50, 50], seq_len=height, width=width, channels=channels, fc=[50, 50], group_size=1, drop_rate=0.5, num_classes = num_classes)
     #ipdb.set_trace()
     #### specify logdir
-    results_dir= 'results/' + version + '/cpu-batch{}/'.format(batch_size)+ datetime
+    results_dir= 'results/' + version + '/cpu-batch{}/seq_len{}-conv[8, 16, 32, 32]-p4-s4-f9-f5-'.format(batch_size, seq_len)+ datetime
     #cnv4_lstm64testcrop10000-add-noise-CNN-dropout0.3-'.format(batch_size, num_seg, majority_vote), seg_len80-conv8-16-32-f9-f5-p3-s2-fc200-lr0.01-, seg_len80-gru50-50-fc50-fc50-drop0.5-
     logdir = results_dir+ '/model'
 
@@ -403,7 +403,7 @@ def train(x):
             #if epoch == 1:
                 #variables = sess.run(kernels, feed_dict={x: data_train, y: labels_train_hot, learning_rate:func.func.lr(epoch)})
             
-            if epoch % 10 == 0:
+            if epoch % 5 == 0:
                 
                 func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=False, hlines=[0.8, 0.85, 0.9], window_len=smooth_win_len, xlabel= 'training epochs', ylabel='accuracy', colors=['darkcyan', 'm'], ylim=[0.0, 1.05], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ '/learning_curve_epoch_{}_seed{}'.format(epoch, rand_seed))
 

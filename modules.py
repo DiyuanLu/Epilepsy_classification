@@ -247,27 +247,28 @@ def resBlock_CNN(x, filter_size=[9, 1], num_stacks=3, output_channels=16, stride
     #net = tf.nn.relu(net)
 
     ### 1x1, channels you want
-    for stack in range(num_stacks):
-        net = tf.layers.conv2d(
-                                inputs = x,
-                                filters = output_channels,
-                                kernel_size = filter_size,
-                                padding='same',
-                                activation = None)
-        net = tf.layers.batch_normalization(net)
-        net = tf.nn.relu(net)
-        ### 3x3 transformation, channels you want
-        net = tf.layers.conv2d(
-                                inputs = net,
-                                filters = output_channels,
-                                kernel_size = filter_size,
-                                padding='same',
-                                activation = None)
-        net = tf.layers.batch_normalization(net)
-        #x = x + net  ### add residual connection
-        net = tf.concat([x, net], axis=3 )
-        x = tf.nn.relu(x)   ### updata the inputs for next stack
-    
+    with tf.variable_scope("resBlock{}".format(No_block)) as scope:
+        for stack in range(num_stacks):
+            net = tf.layers.conv2d(
+                                    inputs = x,
+                                    filters = output_channels,
+                                    kernel_size = filter_size,
+                                    padding='same',
+                                    activation = None)
+            net = tf.layers.batch_normalization(net)
+            net = tf.nn.leaky_relu(net)
+            ### 3x3 transformation, channels you want
+            net = tf.layers.conv2d(
+                                    inputs = net,
+                                    filters = output_channels,
+                                    kernel_size = filter_size,
+                                    padding='same',
+                                    activation = None)
+            net = tf.layers.batch_normalization(net)
+            #x = x + net  ### add residual connection
+            net = tf.concat([x, net], axis=3 )
+            x = tf.nn.leaky_relu(x)   ### updata the inputs for next stack
+        
 
     return x
 
@@ -526,7 +527,24 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
         pool = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides, padding='SAME')
         drop = tf.layers.dropout(pool, rate=0.25, name=scope.name)###0.25
         print(scope.name + "shape", drop.shape.as_list())
-
+        
+    with tf.variable_scope('conv3') as scope:
+        net = tf.layers.conv2d(
+            inputs=drop,
+            filters=output_channels[2],
+            kernel_size=filter_size[0],
+            padding='SAME',
+            kernel_regularizer=regularizer,
+            activation=tf.nn.leaky_relu
+        )
+        net = tf.layers.batch_normalization(net)
+        #net = tf.nn.leaky_relu(net)
+        #func.add_conved_image_to_summary(net)
+        #activities[net.name] = net
+        #func.add_conved_image_to_summary(conv)
+        #add_kernel_to_image_summary_with_scope(scope)
+        print(scope.name + "shape", net.shape.as_list())
+        
     with tf.variable_scope('conv3_pool') as scope:
         net = tf.layers.conv2d(
             inputs=drop,
@@ -576,7 +594,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             net = tf.layers.dropout(net, rate=0.5)
             
             print(scope.name + "shape", net.shape.as_list())
-        tf.summary.histogram("dense_out", net)
+        #tf.summary.histogram("dense_out", net)
         #ipdb.set_trace()
         variable_summaries(tf.trainable_variables()[-2])
         
@@ -619,8 +637,9 @@ def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, ch
             kernel_size=filter_size[0],
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.relu
+            activation=tf.nn.leaky_relu
         )
+        
         #conv = resBlock_CNN(conv, filter_size=filter_size[0], num_stacks=1, output_channels=output_channels[1], stride=[1, 1], name=scope.name, No_block=0)
         #conv = tf.layers.batch_normalization(conv)
         print(scope.name + "shape", conv.shape.as_list())
@@ -635,7 +654,7 @@ def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, ch
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
-        #conv = resBlock_CNN(conv, filter_size=filter_size[0], num_stacks=1, output_channels=output_channels[2], stride=[1, 1], name=scope.name, No_block=1)
+        conv = resBlock_CNN(conv, filter_size=filter_size[0], num_stacks=1, output_channels=output_channels[2], stride=[1, 1], name=scope.name, No_block=1)
         #conv = tf.layers.batch_normalization(conv)
         print(scope.name + "shape", conv.shape.as_list())
         conv = tf.layers.max_pooling2d(conv, pool_size=pool_size, strides=strides, padding='SAME')
@@ -643,10 +662,7 @@ def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, ch
         print(scope.name + "shape", conv.shape.as_list())
 
         #### high-way net
-        H = tf.layers.dense(conv, units=output_channels[1], activation=tf.nn.relu, name=scope.name+"H")
-        T = tf.layers.dense(conv, units=output_channels[1], activation=tf.nn.sigmoid, name=scope.name+"T")
-        C = 1. - T
-        conv = H * T + conv * C
+
 
     with tf.variable_scope('conv2') as scope:
         conv = tf.layers.conv2d(
@@ -657,10 +673,9 @@ def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, ch
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
-        print(scope.name + "shape", conv.shape.as_list())
         #conv = resBlock_CNN(conv, filter_size=filter_size[0], num_stacks=1, output_channels=output_channels[2], stride=[1, 1], name=scope.name, No_block=2)
         print(scope.name + "shape", conv.shape.as_list())
-        conv = tf.layers.max_pooling2d(conv, pool_size=pool_size, strides=strides, padding='SAME')
+        #conv = tf.layers.max_pooling2d(conv, pool_size=pool_size, strides=strides, padding='SAME')
         #print(scope.name + "shape", pool.shape.as_list())
         conv = tf.layers.conv2d(
             inputs=conv,
@@ -670,6 +685,7 @@ def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, ch
             kernel_regularizer=regularizer,
             activation=tf.nn.relu
         )
+        conv = resBlock_CNN(conv, filter_size=filter_size[2], num_stacks=1, output_channels=output_channels[2], stride=[1, 1], name=scope.name, No_block=1)
         print(scope.name + "shape", conv.shape.as_list())
         conv = tf.layers.max_pooling2d(conv, pool_size=pool_size, strides=strides, padding='SAME')
         print(scope.name + "shape", conv.shape.as_list())
@@ -681,25 +697,22 @@ def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, ch
         #drop = H * T + drop * C
 
     with tf.variable_scope('fully_connected') as scope:
-        flat = tf.reshape(conv, [-1, conv.shape[1]*conv.shape[2]*conv.shape[3]])
-        print(scope.name + "shape", flat.shape.as_list())
+        net = tf.reshape(conv, [-1, conv.shape[1]*conv.shape[2]*conv.shape[3]])
+        print(scope.name + "shape", net.shape.as_list())
         ### dense layer
         for ind, units in enumerate(fc):
             net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.relu)            
             net = tf.layers.dropout(net, rate=0.5)###0.50
-        tf.summary.histogram('pre_activation', net)
-        ##### high-way net
-        #H = tf.layers.dense(drop, units=num_outputs, activation=tf.nn.relu, name=scope.name+"denseH")
-        #T = tf.layers.dense(drop, units=num_outputs, activation=tf.nn.sigmoid, name=scope.name+"denseT")
-        #C = 1. - T
-        #drop = H * T + drop * C
+            print(scope.name + "shape", net.shape.as_list())
+        #tf.summary.histogram('pre_activation', net)
+
         logits = tf.layers.dense(
                                 inputs=net,
                                 units=num_classes,
                                 activation=tf.nn.softmax,
                                 kernel_regularizer=regularizer)
     ##### track all variables
-    ipdb.set_trace()
+
     all_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
     kernels = {}
     for var in all_trainable_vars:

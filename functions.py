@@ -33,34 +33,34 @@ import matplotlib
 ########################### model ######################
 def lr(epoch):
     learning_rate = 0.001
-    if epoch > 120:
+    if epoch > 100:
         learning_rate *= 0.5e-3
-    elif epoch > 100:
-        learning_rate *= 1e-3
     elif epoch > 50:
+        learning_rate *= 1e-3
+    elif epoch > 35:
         learning_rate *= 1e-2
-    elif epoch > 20:
+    elif epoch > 15:
         learning_rate *= 1e-1
     return learning_rate
 
 def get_batch_size(epoch):
-    learning_rate = 64
+    batch_size = 64
     if epoch > 50:
-        learning_rate = 4
+        batch_size = 4
     elif epoch > 20:
-        learning_rate = 8
+        batch_size = 8
     elif epoch > 10:
-        learning_rate = 16
+        batch_size = 16
     elif epoch > 5:
-        learning_rate = 32 
-    return learning_rate
+        batch_size = 32 
+    return batch_size
     
 def get_save_every(epoch):
     save_every = 2
     if epoch > 30:
         save_every = 10
     elif epoch > 9:
-        save_every = 5
+        save_every = 3
 
     return save_every
     

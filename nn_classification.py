@@ -52,7 +52,7 @@ ifnorm = True
 ifcrop = True    ###False   #
 
 if ifcrop:
-    crop_len = 9000
+    crop_len = 9500
     seq_len = crop_len
         
 width = 2  # with augmentation 2   ### data width
@@ -104,11 +104,11 @@ pattern='Data*.csv'
 #mod_params = './module_params.json'
 #with open(mod_params, 'r') as f:
     #params = json.load(f)
+model_name = 'CNN_Tutorial_Resi'
+version = 'whole_{}_{}'.format(pattern[0:4], model_name)# AggResNet CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
 
-version = 'whole_{}_RNN_Tutorial'.format(pattern[0:4])# AggResNet CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
-
-rand_seed = np.random.choice(200000)
-#rand_seed = 922
+#rand_seed = np.random.choice(200000)
+rand_seed = 175861
 np.random.seed(rand_seed)
 print('rand seed', rand_seed)
 
@@ -173,7 +173,7 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, crop_len=10000, ifsli
     #data_test = func.add_random_noise(data_test, prob=0.5, noise_amp=0.01)
                 
     test_bs = 100
-    logits = []
+    logits = np.zeros((len(labels_test),))
     for jj in range(len(labels_test) // test_bs):
         if ifslide:
             data_slide = func.slide_and_segment(data_test[jj*test_bs: (jj+1)*test_bs, :, :], num_seg = num_seg, window=window, stride=stride)## 5s segment with 1s overlap
@@ -186,12 +186,14 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, crop_len=10000, ifsli
             
         test_acc, test_loss, logi = sess.run([accuracy, cost, outputs], {x: data_test_batch, y: labels_test_batch, learning_rate:func.lr(epoch)})
         
-        logits = np.append(logits, np.argmax(logi, 1))
+        logits[jj*test_bs : (jj+1)*test_bs] = np.argmax(logi, axis=1)
         
         acc_epoch_test += test_acc
         loss_epoch_test += test_loss
-
-    func.plot_auc_curve(np.repeat(labels_test, num_seg, axis=0), logits, save_name=save_name+'/epoch_{}_test_'.format(epoch))
+    #ipdb.set_trace()
+    #func.plot_auc_curve(np.repeat(labels_test, num_seg, axis=0), logits, save_name=save_name+'/epoch_{}_test_'.format(epoch))
+    ### input to this function is finally int label
+    func.plot_auc_curve(labels_test, logits, save_name=save_name+'/epoch_{}_test_'.format(epoch))
     acc_epoch_test /= (jj + 1)
     loss_epoch_test /= (jj + 1)
 
@@ -220,7 +222,7 @@ def train(x):
         ele = iter.get_next() #you get the filename
             
     ################# Constructing the network ###########################
-    #outputs = mod.fc_net(x, hid_dims=[500, 300, 100], num_classes = num_classes)   ##
+    #if model=='fc': outputs = mod.fc_net(x, hid_dims=[500, 300, 100], num_classes = num_classes)   ##
     #outputs, out_pre = mod.resi_net(x, hid_dims=[1500, 500], seq_len=height, width=width, channels=channels, num_blocks=5, num_classes = num_classes)
     #outputs = mod.CNN(x, output_channels=[8, 16, 32], num_block=3, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], seq_len=height, width=width, channels=channels, num_classes = num_classes)
     #outputs = mod.CNN_new(x, output_channels=[4, 8, 16, 32], num_block=2, num_seg=num_seg, seq_len=height, width=width, channels=channels, num_classes = num_classes)    ## ok
@@ -232,15 +234,14 @@ def train(x):
     #outputs = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
     #outputs = mod.Inception_complex(x, output_channels=[4, 8, 16, 32], filter_size=[5, 9], num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
     #outputs = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
-    #outputs, pre = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], fc=[500], num_classes=num_classes)
+    #if model_name == 'AggResNet': outputs, pre = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], fc=[500], num_classes=num_classes)
 
-    outputs, fc_act, activities = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[200], iffusion=iffusion, num_seg=num_seg) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
-    #outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[250]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
-    #outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
-    #outputs, kernels = mod.RNN_Tutorial(x, num_rnn=[50, 50], seq_len=height, width=width, channels=channels, fc=[50, 50], drop_rate=0.5, group_size=1, num_classes = num_classes)
+    #if model_name == 'CNN_Tutorial': outputs, fc_act, activities = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[200], iffusion=iffusion, num_seg=num_seg) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    if model_name == 'CNN_Tutorial_Resi': outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
+    #if model_name == 'RNN_Tutorial': outputs, kernels = mod.RNN_Tutorial(x, num_rnn=[50, 50], seq_len=height, width=width, channels=channels, fc=[50, 50], drop_rate=0.5, group_size=1, num_classes = num_classes)
     #ipdb.set_trace()
     #### specify logdir
-    results_dir= 'results/' + version + '/cpu-batch{}/seg_len{}-conv8-16-32-f9-f5-p4-s4-fc200-lr0.01-'.format(batch_size, seq_len)+ datetime
+    results_dir= 'results/' + version + '/cpu-batch{}/seg_len{}-conv8-16-32-f9-f5-p4-s4-fc200-lr0.01-RMSP-'.format(batch_size, seq_len)+ datetime
     #cnv4_lstm64testcrop10000-add-noise-CNN-dropout0.3-'.format(batch_size, num_seg, majority_vote)
     ##seg_len166-conv5,3-p4-s3-conv8-16-32-fc100-
     logdir = results_dir+ '/model'
@@ -285,11 +286,18 @@ def train(x):
         tf.summary.scalar('accuracy', accuracy)
         tf.summary.scalar('auc', area_under_curve)
         
-    optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,
-                                    beta1=0.9,
-                                   beta2=0.999,
-                                   epsilon=1e-08).minimize(cost)###,
-    #optimizer = tf.train.RMSPropOptimizer(0.01).minimize(cost)   ### laerning rate 0.01 works
+    #optimizer = tf.train.AdamOptimizer(learning_rate=learning_rate,
+                                    #beta1=0.9,
+                                   #beta2=0.999,
+                                   #epsilon=1e-08).minimize(cost)###,
+    #optimizer = tf.train.GradientDescentOptimizer(learning_rate=learning_rate,
+                                    #beta1=0.9,
+                                   #beta2=0.999,
+                                   #epsilon=1e-08).minimize(cost)###,
+    optimizer = tf.train.RMSPropOptimizer(learning_rate=learning_rate,
+                                            decay=0.9,
+                                            momentum=0.999,
+                                            epsilon=1e-10).minimize(cost)   ### laerning rate 0.01 works
     #optimizer = tf.train.AdagradOptimizer(0.001).minimize(cost)
     #################### Set up logging for TensorBoard.
     writer = tf.summary.FileWriter(logdir)
@@ -337,14 +345,15 @@ def train(x):
                 save_name = results_dir + '/' + 'step{}_'.format( batch)
                 
                 filename_train, labels_train =  sess.run(ele)   # names, 1s/0s the filename is bytes object!!! TODO
+                #print("epoch-", epoch, 'batch', batch, filename_train)
                 data_train = np.zeros([batch_size, ori_len, width])
                 filename_train = filename_train.astype(np.str)
                 for ind in range(len(filename_train)):
                     data = func.read_data(filename_train[ind],  header=header, ifnorm=True, start=start, width=width)
                     data_train[ind, :, :] = data
                     
-                ## data augmentation
-                ### randomly crop a target_len
+                # data augmentation
+                ## randomly crop a target_len
                 if ifcrop:
                     data_train = func.random_crop(data_train, crop_len=crop_len)
 
@@ -396,7 +405,7 @@ def train(x):
                 func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, hlines=[], colors=['c', 'violet'], ylim=[0.05, 0.9], xlabel= 'training epochs', ylabel='loss', title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ '/loss_epoch_{}_seed{}'.format(epoch, rand_seed))
 
                 func.save_data_to_csv((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test', save_name=results_dir + '/' + datetime + 'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
-                #func.plot_auc_curve(labels_train_hot, outputs, save_name=results_dir+'/epoch_{}'.format(epoch))
+
     ##Stop the threads
     #coord.request_stop()
     
