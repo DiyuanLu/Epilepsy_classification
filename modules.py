@@ -484,11 +484,11 @@ def DilatedCNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, 
 
 
 
-def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channels=3, pool_size=[2, 2], strides=[2, 2], filter_size=[3, 3], num_classes=10, fc=[500]):
+def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channels=3, pool_size=[2, 2], strides=[2, 2], filter_size=[3, 3], num_classes=10, fc=[500], iffusion=True, num_seg=1):
     '''https://github.com/exelban/tensorflow-cifar-10/blob/master/include/model.py'''
     x = tf.reshape(x, [-1, seq_len, width, channels])   ###
-    for ind in range(3):
-        tf.summary.image('image_ori{}'.format(ind), tf.reshape(x[ind,...], [-1, seq_len, width, channels]))
+    #for ind in range(3):
+        #tf.summary.image('image_ori{}'.format(ind), tf.reshape(x[ind,...], [-1, seq_len, width, channels]))
         
     activities = {}
     with tf.variable_scope('conv1') as scope:
@@ -500,9 +500,10 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.leaky_relu
         )
-        #ipdb.set_trace()
-        func.add_conved_image_to_summary(net)
-        activities[net.name] = net
+        net = tf.layers.batch_normalization(net)
+        #net = tf.nn.leaky_relu(net)
+        #func.add_conved_image_to_summary(net)
+        #activities[net.name] = net
         #ipdb.set_trace()
         #add_kernel_to_image_summary_with_scope(scope)
         #func.add_conved_image_to_summary(conv)
@@ -516,8 +517,9 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.leaky_relu
         )
-        func.add_conved_image_to_summary(net)
-        activities[net.name] = net
+        net = tf.layers.batch_normalization(net)
+        #net = tf.nn.leaky_relu(net)
+        #activities[net.name] = net
         #func.add_conved_image_to_summary(conv)
         #add_kernel_to_image_summary_with_scope(scope)
         print(scope.name + "shape", net.shape.as_list())
@@ -534,8 +536,10 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.leaky_relu
         )
-        func.add_conved_image_to_summary(net)
-        activities[net.name] = net
+        net = tf.layers.batch_normalization(net)
+        #net = tf.nn.leaky_relu(net)
+        #func.add_conved_image_to_summary(net)
+        #activities[net.name] = net
         #func.add_conved_image_to_summary(conv)
         #add_kernel_to_image_summary_with_scope(scope)
         print(scope.name + "shape", net.shape.as_list())
@@ -552,8 +556,10 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_regularizer=regularizer,
             activation=tf.nn.leaky_relu
         )
-        func.add_conved_image_to_summary(net)
-        activities[net.name] = net
+        net = tf.layers.batch_normalization(net)
+        #net = tf.nn.leaky_relu(net)
+        #func.add_conved_image_to_summary(net)
+        #activities[net.name] = net
         #add_kernel_to_image_summary_with_scope(scope)
         print(scope.name + "shape", net.shape.as_list())
         pool = tf.layers.max_pooling2d(net, pool_size=pool_size, strides=strides, padding='SAME')
@@ -566,22 +572,34 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
         
         for ind, units in enumerate(fc):
             net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.leaky_relu)
-            activities[net.name] = net
+            #activities[net.name] = net
             net = tf.layers.dropout(net, rate=0.5)
             
             print(scope.name + "shape", net.shape.as_list())
         tf.summary.histogram("dense_out", net)
         #ipdb.set_trace()
         variable_summaries(tf.trainable_variables()[-2])
-        logits = tf.layers.dense(
-                                inputs=net,
-                                units=num_classes,
-                                activation=tf.nn.softmax,
-                                kernel_regularizer=regularizer,
-                                name=scope.name)
+        
+    #ipdb.set_trace()
+    kernels = {}   #### implement attention 
+    #if iffusion:
+        #with tf.variable_scope('fusion') as scope:
+            #fusion_w = tf.Variable(tf.random_normal([num_seg, num_classes], stddev=0.1), name="fusion_w")
+            #fusion_b = tf.Variable(tf.random_normal([num_seg], stddev=0.1), name="fusion_b")
+            #fusion_logits = tf.reshape(logits, [-1, num_seg, num_classes])
+            #logits = tf.nn.softmax(tf.multiply(fusion_logits, fusion_w) + fusion_b)
+            #kernels['fusion_w'] = fusion_w
+            
+    logits = tf.layers.dense(
+                            inputs=net,
+                            units=num_classes,
+                            activation=tf.nn.softmax,
+                            kernel_regularizer=regularizer,
+                            name=scope.name)
+    
     ##### track all variables
     all_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
-    kernels = {}
+    
     for var in all_trainable_vars:
         if 'kernel' in var.name:            
                 kernels[var.name] = var
@@ -681,6 +699,7 @@ def CNN_Tutorial_Resi(x, output_channels=[32, 64, 128], seq_len=32, width=32, ch
                                 activation=tf.nn.softmax,
                                 kernel_regularizer=regularizer)
     ##### track all variables
+    ipdb.set_trace()
     all_trainable_vars = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES)
     kernels = {}
     for var in all_trainable_vars:

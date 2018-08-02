@@ -52,12 +52,17 @@ start = 0
 ifnorm = True
 width = 1  # with augmentation 2   ### data width
 channels = 1
-ifslide = True  #False    ## 
+ifslide = True  #False    ##
 if ifslide:
-    seq_len = 80           ## 80 is from the correlation distribution result
+    seq_len = 80          ## 76 is from the correlation distribution result
     majority_vote = True
-    post_process = 'majority_vote'   #'averaging_window'    ## 
-    num_seg = ori_len // seq_len   
+    post_process = 'majority_vote'   #'averaging_window'    ##
+    window = seq_len
+    stride = seq_len // 5
+    if ((ori_len - window) % stride) == 0:
+        num_seg = (ori_len - window) // stride + 1
+    else:
+        num_seg = (ori_len - window) // stride
     ### use a 5s window slide over the 20s recording and do classification on segments, and then do a average vote
     height = seq_len
     x = tf.placeholder('float32', [None, height, width])  #20s recording width of each recording is 1, there are 2 channels
@@ -68,6 +73,7 @@ else:
     num_seg = 1
     height = seq_len
     x = tf.placeholder('float32', [None, height, width])
+print("num_seg", num_seg)
 y = tf.placeholder('float32')
 learning_rate = tf.placeholder('float32')
 ifcrop = False   #True
@@ -77,7 +83,7 @@ if ifcrop:
 else:
     crop_len = seq_len
 
-batch_size = 2  # old: 16     20has a very good result
+batch_size = 16  # old: 16     20has a very good result
 num_classes = 3
 epochs = 91
 header = None
@@ -91,7 +97,7 @@ pattern='*.csv'
 #with open(mod_params, 'r') as f:
     #params = json.load(f)
 
-version = 'Bonn_CNN_Tutorial'# AggResNet CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
+version = 'Bonn_AggResNet'#CNN_Tutorial  CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
 
 rand_seed = np.random.choice(200000)
 #rand_seed = 922
@@ -130,9 +136,9 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, a
     logits = []
 
     if ifslide:
-        data_slide = func.slide_and_segment(data_test, num_seg, window=seq_len, stride=seq_len)## 5s segment with 1s overlap
+        data_slide = func.slide_and_segment(data_test, num_seg=num_seg, window=window, stride=stride)## 5s segment with 1s overlap
         data_test_batch = data_slide
-        labels_test_batch = np.repeat(labels_test_hot,  num_seg, axis=0).reshape(-1, labels_test_hot.shape[1])
+        labels_test_batch = np.repeat(labels_test_hot, num_seg, axis=0).reshape(-1, labels_test_hot.shape[1])
         #labels_test_batch = labels_test_hot[jj*50: (jj+1)*50, :]
     else:
         data_test_batch, labels_test_batch  = data_test, labels_test_hot
@@ -173,27 +179,28 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, a
                 #plt.savefig(save_name + '/line-plot-filterse-conv1' + np.str(train_vars[var].shape)+'-epoch-{}.png'.format(epoch), format='png')
                 #plt.close()
                 #ipdb.set_trace()
-        ## go through all the recorded layer activations
-    #for ind, activity in enumerate(act):
-        #name = activity[0:5]
-        #num_sample = 2     ## each class plot 3 samples
-        #### for each label plot 2 examples of all activations
-        #for label in range(num_classes):
-            #### plot conv layer activations            
-            #whole_act= act[activity]   ## get the whole batch activity                 
+        ### go through all the recorded layer activations
+    #if epoch == 5:
+        #for ind, activity in enumerate(act):
+            #name = activity[0:5]
+            #num_sample = 2     ## each class plot 3 samples
+            #### for each label plot 2 examples of all activations
+            #for label in range(num_classes):
+                #### plot conv layer activations            
+                #whole_act= act[activity]   ## get the whole batch activity                 
 
-            #if 'conv' in name:
-                #whole_act = np.reshape(whole_act, [len(labels_test), -1, whole_act.shape[2],  whole_act.shape[3]])  ### reshape back to the whole signal shape                
-                #sample_layer_act = whole_act[labels_test == label][0:num_sample,...]
-                #for sample in range(num_sample):
-                    #func.plot_conv_activation_with_ori(data_test[labels_test == label][sample, :, 0], sample_layer_act[sample, ...], label, epoch=epoch, save_name=save_name+'/sample-{}-layer_{}'.format(sample, name))
-            #### plot fully connected activations
-            #elif 'fully' in activity:
-                #whole_act = np.reshape(whole_act, [len(labels_test), -1])  ### reshape back to the whole signal shape                
-                #sample_layer_act = whole_act[labels_test == label][0:num_sample,...]
-                #for sample in range(num_sample):
-                    #func.plot_fully_activation_with_ori(data_test[labels_test == label][sample, :, 0], sample_layer_act[sample,...], label, epoch=epoch, Fs=173.16, NFFT=256, save_name=save_name+'/sample-{}-layer_{}'.format(sample, name))
-                    
+                #if 'conv' in name:
+                    #whole_act = np.reshape(whole_act, [len(labels_test), -1, whole_act.shape[2],  whole_act.shape[3]])  ### reshape back to the whole signal shape                
+                    #sample_layer_act = whole_act[labels_test == label][0:num_sample,...]
+                    #for sample in range(num_sample):
+                        #func.plot_conv_activation_with_ori(data_test[labels_test == label][sample, :, 0], sample_layer_act[sample, ...], label, epoch=epoch, save_name=save_name+'/sample-{}-layer_{}'.format(sample, name))
+                #### plot fully connected activations
+                #elif 'fully' in activity:
+                    #whole_act = np.reshape(whole_act, [len(labels_test), -1])  ### reshape back to the whole signal shape                
+                    #sample_layer_act = whole_act[labels_test == label][0:num_sample,...]
+                    #for sample in range(num_sample):
+                        #func.plot_fully_activation_with_ori(data_test[labels_test == label][sample, :, 0], sample_layer_act[sample,...], label, epoch=epoch, Fs=173.16, NFFT=256, save_name=save_name+'/sample-{}-layer_{}'.format(sample, name))
+                        
 
         #'''TODO: plot 3 samples of each class to interpret the meaning'''
                 ##func.put_kernels_on_grid(train_vars[var], pad=1, save_name=save_name+'/conv_kernel', mode='plot')
@@ -244,15 +251,15 @@ def train(x):
     #outputs, kernels = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
     #outputs, kernels = mod.Inception_complex(x, output_channels=[4, 8, 16, 32], filter_size=[5, 9], num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
     #outputs, kernels = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
-    #outputs, kernels = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], fc=[500], num_classes=num_classes)
+    #outputs, kernels = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[3, 1], pool_size=[2, 1], strides=[2, 1], fc=[100], num_classes=num_classes)
 
-    outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[3, 1], strides=[2, 1], filter_size=[[9, 1], [5, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[3, 1], strides=[2, 1], filter_size=[[5, 1], [3, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
     #outputs, kernels = mod.CNN_Tutorial(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[250]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
     #outputs, kernels = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
     #outputs, kernels = mod.RNN_Tutorial(x, num_rnn=[50, 50], seq_len=height, width=width, channels=channels, fc=[50, 50], group_size=1, drop_rate=0.5, num_classes = num_classes)
     #ipdb.set_trace()
     #### specify logdir
-    results_dir= 'results/' + version + '/cpu-batch{}/seg_len80-conv8-16-32-f9-f5-p3-s2-fc200-lr0.01-'.format(batch_size)+ datetime
+    results_dir= 'results/' + version + '/cpu-batch{}/'.format(batch_size)+ datetime
     #cnv4_lstm64testcrop10000-add-noise-CNN-dropout0.3-'.format(batch_size, num_seg, majority_vote), seg_len80-conv8-16-32-f9-f5-p3-s2-fc200-lr0.01-, seg_len80-gru50-50-fc50-fc50-drop0.5-
     logdir = results_dir+ '/model'
 
@@ -346,8 +353,8 @@ def train(x):
             for batch in range(num_train//batch_size + 1):#####                
                 save_name = results_dir + '/' + 'step{}_'.format( batch)
 
-                #data_train, labels_train = train_batch.next()   ### python2
-                data_train, labels_train = train_batch.__next__()   ### python3
+                data_train, labels_train = train_batch.next()   ### python2
+                #data_train, labels_train = train_batch.__next__()   ### python3
                 data_train = np.expand_dims(data_train, 2)
 
                 ## data augmentation
@@ -364,10 +371,11 @@ def train(x):
                     #func.plot_BB_training_examples(data_train[0:10, :, :], labels_train[0:10], save_name=save_name)
                 #ipdb.set_trace()
                 if ifslide:
-                    data_slide = func.slide_and_segment(data_train, num_seg, window=seq_len, stride=seq_len )## 5s segment with 1s overlap
+                    data_slide = func.slide_and_segment(data_train, num_seg=num_seg, window=window, stride=stride )## 5s segment with 1s overlap
+                    #ipdb.set_trace()
                     data_train = data_slide
                     labels_train_hot = np.repeat(labels_train_hot, num_seg, axis=0).reshape(-1, labels_train_hot.shape[1])
-
+                #ipdb.set_trace()
                 _, summary, acc, c = sess.run([optimizer, summaries, accuracy, cost], feed_dict={x: data_train, y: labels_train_hot, learning_rate:func.lr(epoch)})# , options=options, run_metadata=run_metadata We collect profiling infos for each step.
                 writer.add_summary(summary, epoch*(num_train//batch_size)+batch)##
                 

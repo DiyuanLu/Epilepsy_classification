@@ -43,6 +43,18 @@ def lr(epoch):
         learning_rate *= 1e-1
     return learning_rate
 
+def get_batch_size(epoch):
+    learning_rate = 64
+    if epoch > 50:
+        learning_rate = 4
+    elif epoch > 20:
+        learning_rate = 8
+    elif epoch > 10:
+        learning_rate = 16
+    elif epoch > 5:
+        learning_rate = 32 
+    return learning_rate
+    
 def get_save_every(epoch):
     save_every = 2
     if epoch > 30:
@@ -334,7 +346,7 @@ def opp_slide2segment(data_x, data_y, ws, ss):
     data_y = np.asarray([[i[-1]] for i in slide2segment(data_y,ws,ss)])
     return data_x.astype(np.float32), data_y.reshape(len(data_y)).astype(np.uint8)
 
-def slide_and_segment(data_x, num_seg=5, window=128, stride=64):
+def slide_and_segment(data_x, num_seg=100, window=128, stride=64):
     '''
     Param:
         datax: array-like data shape (batch_size, seq_len, channel)
@@ -347,10 +359,9 @@ def slide_and_segment(data_x, num_seg=5, window=128, stride=64):
         expand_y : shape(num_seq*num_segment, num_classes)
         '''
     assert len(data_x.shape) == 3
-    #if data_x.shape[1] % num_seg == 0:   ## if it's int segment
-        #num_seg = (data_x.shape[1] - np.int(window)) // stride + 1
-    #else:
-        #num_seg = (data_x.shape[1] - np.int(window)) // stride
+    #ipdb.set_trace()
+    #if ((r
+    
         
     expand_data = np.zeros((data_x.shape[0], num_seg, window, data_x.shape[-1]))
     #ipdb.set_trace()
@@ -473,9 +484,12 @@ def add_random_noise(data, prob=0.5, noise_amp=0.02):
 
 def random_crop(data, crop_len=10000):
     '''given a target seq len, randomly crop the data'''
+    #choice = data.shape[1] - crop_len
+    #start = np.random.choice(choice, data.shape[0])
     choice = data.shape[1] - crop_len
-    start = np.random.choice(choice, data.shape[0])
-    crop_data = np.array([data[i, start[i]:start[i]+crop_len] for i in range(data.shape[0])])
+    start = np.random.choice(choice)
+    #crop_data = np.array([data[i, start[i]:start[i]+crop_len] for i in range(data.shape[0])])
+    crop_data = data[:, start:start+crop_len]
 
     return crop_data
 

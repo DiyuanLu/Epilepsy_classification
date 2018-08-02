@@ -49,41 +49,52 @@ ori_len = 10240
 seq_len = 10240  #1280   ## 
 start = 0
 ifnorm = True
-ifcrop = False   #True    ###
+ifcrop = True    ###False   #
+
 if ifcrop:
     crop_len = 9000
     seq_len = crop_len
-else:
-    crop_len = seq_len
-
-    
-height = seq_len
+        
 width = 2  # with augmentation 2   ### data width
 channels = 1
-ifslide = True  #False    ## 
+ifslide = False    ## True  #
 if ifslide:
-    seq_len = 80           ## 86 is from the correlation distribution result
+    ## 76 is from the correlation distribution result
     majority_vote = True
-    post_process = 'majority_vote'   #'averaging_window'    ## 
-    num_seg = ori_len // seq_len   
+    post_process = 'majority_vote'   #'averaging_window'    ##
+    window = 76
+    stride = window // 5
+    if ((ori_len - window) % stride) == 0:
+        num_seg = (seq_len - window) // stride + 1
+    else:
+        num_seg = (seq_len - window) // stride
     ### use a 5s window slide over the 20s recording and do classification on segments, and then do a average vote
     height = seq_len
     x = tf.placeholder('float32', [None, height, width])  #20s recording width of each recording is 1, there are 2 channels
 else:
-    seq_len = ori_len
+            
+    #seq_len = ori_len
     majority_vote = False
     post_process = 'None'  #'averaging_window'    ## 
     num_seg = 1
     height = seq_len
     x = tf.placeholder('float32', [None, height, width])
+iffusion = False    ###True
+
+if iffusion:
+    post_process = None
+
+
+
 y = tf.placeholder('float32')
 learning_rate = tf.placeholder('float32')
+#batch_size = tf.placeholder('int64')
+print("num_seg", num_seg)
 
-
-batch_size = 2  # old: 16     20has a very good result
+batch_size = 20  # old: 16     20has a very good result
 num_classes = 2
-epochs = 51
-num_train = 6000#
+epochs = 151
+
 header = None
 train_dir = 'data/Whole_data/train_data/'
 test_dir = 'data/Whole_data/test_data/'
@@ -165,9 +176,10 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, crop_len=10000, ifsli
     logits = []
     for jj in range(len(labels_test) // test_bs):
         if ifslide:
-            data_slide = func.slide_and_segment(data_test[jj*test_bs: (jj+1)*test_bs, :, :], num_seg, window=seq_len, stride=seq_len)## 5s segment with 1s overlap
+            data_slide = func.slide_and_segment(data_test[jj*test_bs: (jj+1)*test_bs, :, :], num_seg = num_seg, window=window, stride=stride)## 5s segment with 1s overlap
             data_test_batch = data_slide
-            labels_test_batch = np.repeat(labels_test_hot[jj*test_bs: (jj+1)*test_bs, :],  num_seg, axis=0).reshape(-1, labels_test_hot.shape[1])
+            if not iffusion:
+                labels_test_batch = np.repeat(labels_test_hot[jj*test_bs: (jj+1)*test_bs, :],  num_seg, axis=0).reshape(-1, labels_test_hot.shape[1])
             #labels_test_batch = labels_test_hot[jj*50: (jj+1)*50, :]
         else:
             data_test_batch, labels_test_batch  = data_test[jj*test_bs: (jj+1)*test_bs, :, :], labels_test_hot[jj*test_bs: (jj+1)*test_bs, :]
@@ -199,7 +211,7 @@ def train(x):
         files, labels = np.array(files_wlabel)[:, 0].astype(np.str), np.array(np.array(files_wlabel)[:, 1]).astype(np.int)
 
         #### split into train and test
-        
+        num_train = len(labels)
         print('num_train', labels.shape)
         
         ### tensorflow dataset
@@ -222,13 +234,13 @@ def train(x):
     #outputs = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
     #outputs, pre = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], fc=[500], num_classes=num_classes)
 
-    outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[3, 1], strides=[2, 1], filter_size=[[9, 1], [5, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    outputs, fc_act, activities = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[200], iffusion=iffusion, num_seg=num_seg) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
     #outputs, fc_act = mod.CNN_Tutorial(x, output_channels=[16, 32, 64], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[250]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
     #outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
     #outputs, kernels = mod.RNN_Tutorial(x, num_rnn=[50, 50], seq_len=height, width=width, channels=channels, fc=[50, 50], drop_rate=0.5, group_size=1, num_classes = num_classes)
     #ipdb.set_trace()
     #### specify logdir
-    results_dir= 'results/' + version + '/cpu-batch{}/seg_len80-conv8-16-32-f9-f5-p3-s2-fc200-lr0.01-'.format(batch_size)+ datetime
+    results_dir= 'results/' + version + '/cpu-batch{}/seg_len{}-conv8-16-32-f9-f5-p4-s4-fc200-lr0.01-'.format(batch_size, seq_len)+ datetime
     #cnv4_lstm64testcrop10000-add-noise-CNN-dropout0.3-'.format(batch_size, num_seg, majority_vote)
     ##seg_len166-conv5,3-p4-s3-conv8-16-32-fc100-
     logdir = results_dir+ '/model'
@@ -247,6 +259,7 @@ def train(x):
     
 
     with tf.name_scope('loss'):
+        
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name='cost')
     with tf.name_scope('performance'):
         predictions = tf.argmax(outputs, 1)
@@ -344,17 +357,18 @@ def train(x):
                     #func.plot_BB_training_examples(data_train[0:10, :, :], labels_train[0:10], save_name=save_name)
                 #ipdb.set_trace()
                 if ifslide:
-                    data_slide = func.slide_and_segment(data_train, num_seg, window=seq_len, stride=seq_len )## 5s segment with 1s overlap
+                    data_slide = func.slide_and_segment(data_train, num_seg=num_seg, window=window, stride=stride )## 5s segment with 1s overlap
                     data_train = data_slide
-                    labels_train_hot = np.repeat(labels_train_hot, num_seg, axis=0).reshape(-1, labels_train_hot.shape[1])
-
+                    if not iffusion:
+                        labels_train_hot = np.repeat(labels_train_hot, num_seg, axis=0).reshape(-1, labels_train_hot.shape[1])
+                #ipdb.set_trace()
                 _, summary, acc, c = sess.run([optimizer, summaries, accuracy, cost], feed_dict={x: data_train, y: labels_train_hot, learning_rate:func.lr(epoch)})# , options=options, run_metadata=run_metadata We collect profiling infos for each step.
                 writer.add_summary(summary, epoch*(num_train//batch_size)+batch)##
                 
                 ## accumulate the acc and cost later to average
                 acc_epoch_train += acc
                 loss_epoch_train += c
-                if batch % 200 == 0:
+                if batch % 20 == 0:
                     print('epoch', epoch, 'batch:',batch, 'loss:', c, 'train-accuracy:', acc)
             ###################### test ######################################
             if epoch % 1 == 0:                                
