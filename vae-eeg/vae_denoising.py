@@ -4,8 +4,8 @@
 #from __future__ import print_function
 import tensorflow as tf
 import numpy as np
-import matplotlib
-matplotlib.use('Agg') 
+#import matplotlib
+#matplotlib.use('Agg') 
 from tensorflow.examples.tutorials.mnist import input_data
 from optparse import OptionParser
 import matplotlib.pyplot as plt
@@ -55,7 +55,7 @@ def get_arguments():
 def save_model(saver, sess, logdir, step):
     model_name = 'model.ckpt'
     checkpoint_path = os.path.join(logdir, model_name)
-    print('Storing checkpoint to {} ...'.format(logdir), end="")
+    print('Storing checkpoint to {} ...'.format(logdir))
     sys.stdout.flush()
 
     if not os.path.exists(logdir):
@@ -221,28 +221,28 @@ def EEG_data(data, pattern='Data*.csv', withlabel=False, num_samples=784, batch_
 
 
 def lr(epoch):
-    learning_rate = 1e-4
-    if epoch > 400:
-        learning_rate *= 0.5e-3
-    elif epoch > 350:
-        learning_rate *= 1e-3
-    elif epoch > 200:
-        learning_rate *= 1e-2
-    elif epoch > 100:
-        learning_rate *= 1e-1
+    learning_rate = 0.0025
+    #if epoch > 400:
+        #learning_rate *= 0.5e-3
+    #elif epoch > 350:
+        #learning_rate *= 1e-3
+    #elif epoch > 200:
+        #learning_rate *= 1e-2
+    #elif epoch > 100:
+        #learning_rate *= 1e-1
     return learning_rate
 
 # Get the MNIST data
 #mnist = input_data.read_data_sets('../data/MNIST_data', one_hot=True)
 
 # Parameters
-input_dim = 2048#mnist.train.images.shape[1]   perfect-2048
-hidden_layer1 = 1024   ## best result config   perfect-1024
-hidden_layer2 = 256   ###                      perfect-256
-z_dim = 128    ###perfect-128
+input_dim = 128#mnist.train.images.shape[1]   perfect-2048
+hidden_layer1 = input_dim // 4   ## best result config   perfect-1024
+hidden_layer2 = hidden_layer1 // 2   ###                      perfect-256
+z_dim = hidden_layer2 // 2    ###perfect-128
 
 beta1 = 0.9
-batch_size = 20
+batch_size = 2
 epochs = 501
 tensorboard_path = 'tensorboard_plots/'
 noise_length = int(input_dim / 5.)
@@ -251,8 +251,11 @@ pattern='Data*.csv'
 version = 'progress_{}'.format(pattern[0:4])
 # get audio data
 #audio_data = CMajorScaleDistribution(input_dim, batch_size)
-train_data, test_data, num_train, num_test = train_test_split_my_data(data_dir, pattern='Data*.csv', withlabel=False)
-train_batch = EEG_data(train_data, pattern=pattern, withlabel=False, num_samples=input_dim, batch_size=batch_size)
+#train_data, test_data, num_train, num_test = train_test_split_my_data(data_dir, pattern='Data*.csv', withlabel=False)
+#num_train = train_data.shape[0]
+#num_test = test_data.shape[0]
+##ipdb.set_trace()
+#train_batch = EEG_data(train_data, pattern=pattern, withlabel=False, num_samples=input_dim, batch_size=batch_size)
 #test_data = get_test_data(datas_test, num_samples=input_dim)
 learning_rate = tf.placeholder("float32")
 
@@ -263,12 +266,19 @@ logdir = results_dir+ "model/"
 
 # p(z|X)
 def encoder(x):
-    e_linear_1 = tf.nn.relu(linear(x, hidden_layer1, 'e_linear_1'))
-    e_linear_2 = tf.nn.relu(linear(e_linear_1, hidden_layer2, 'e_linear_2'))
-    z_mu = linear(e_linear_2, z_dim, 'z_mu')
-    z_logvar = linear(e_linear_2, z_dim, 'z_logvar')
+    with tf.variable_scope("encoder") as scope:
+    #e_linear_1 = tf.nn.relu(linear(x, hidden_layer1, 'e_linear_1'))
+    #e_linear_2 = tf.nn.relu(linear(e_linear_1, hidden_layer2, 'e_linear_2'))
+        e_linear_1 = tf.layers.dense(inputs=x, units=hidden_layer1, activation=tf.nn.leaky_relu, name='e_linear_1')
+        e_linear_1 = tf.layers.dropout(e_linear_1, rate=0.5)
+        e_linear_2 = tf.layers.dense(inputs=e_linear_1, units=hidden_layer2, activation=tf.nn.leaky_relu, name='e_linear_2')
+        e_linear_2 = tf.layers.dropout(e_linear_2, rate=0.5)
+        z_mu = tf.layers.dense(inputs=e_linear_2, units=z_dim, activation=None, name='z_mu')
+        z_logvar = tf.layers.dense(inputs=e_linear_2, units=z_dim, activation=None, name='z_logvar')
     return z_mu, z_logvar
-#def encoder(x, num_filters=[8, 16, 32, 32], kernel_size=[7, 1], pool_size=[2, 1], height=2048, width=1, scope=None):
+
+    
+#def encoder(x, num_filters=[4, 8, 16], kernel_size=[4, 1], pool_size=[4, 1], height=2048, width=1, scope=None):
     #"""parameters from
     #https://www.kaggle.com/rvislaywade/visualizing-mnist-using-a-variational-autoencoder
     #def encoder_net(x, latent_dim, h_dim):
@@ -293,27 +303,23 @@ def encoder(x):
                                         #inputs = net,
                                         #filters = num_outputs,
                                         #kernel_size = kernel_size,
-                                        #strides = (2, 1),
+                                        #strides = (4, 1),
                                         #padding='same',
-                                        #activation=tf.nn.relu)
+                                        #activation=tf.nn.leaky_relu)
                 ##net = tf.layers.max_pooling2d(inputs=net, pool_size=pool_size, padding='SAME', strides=2)
                 #print("net ", net.shape.as_list())
-                
+                #net = tf.layers.batch_normalization(net)
         #### dense layer
         #with tf.name_scope("dense"):
-            #net = tf.layers.dropout(inputs=net, rate=0.75)
+            
             #net = tf.reshape(net, [-1,  net.shape[1]*net.shape[2]*net.shape[3]])
             #net = tf.layers.dense(inputs=net, units=hidden_layer2, activation=tf.nn.relu)
+            #net = tf.layers.dropout(inputs=net, rate=0.5)
         #print("dense out net ", net.shape.as_list())
-        #### Get mu
-        #z_mu = tf.contrib.layers.fully_connected(net, z_dim, activation_fn=None)
-        ## layer 2   Output mean and std of the latent variable distribution
-        #z_logvar = tf.contrib.layers.fully_connected(net, z_dim, activation_fn=None)
-        ### Reparameterize import Randomness
-        ##noise = tf.random_normal([1, latent_dim])
-        ### z_1 is the fisrt leverl output(latent variable) of our Encoder
-        ##z_1 = mu_1 + tf.multiply(noise, tf.exp(0.5*sigma_1))
-        ##print z_1.shape
+        #### Get
+        #z_mu = tf.layers.dense(inputs=net, units=z_dim, activation=None, name='z_mu')
+        #z_logvar = tf.layers.dense(inputs=net, units=z_dim, activation=None, name='z_logvar')
+
         #return z_mu, z_logvar    #dense1
 
 def sample_z(mu, log_var):
@@ -322,10 +328,15 @@ def sample_z(mu, log_var):
 
 # p(X|z)
 def decoder(z):
-    d_linear_1 = tf.nn.relu(linear(z, hidden_layer2, 'd_linear_1'))
-    d_linear_2 = tf.nn.relu(linear(d_linear_1, hidden_layer1, 'd_linear_2'))
-    logits = linear(d_linear_2, input_dim, 'logits')
-    prob = tf.nn.sigmoid(logits)
+    with tf.variable_scope("decoder") as scope:
+        #d_linear_1 = tf.nn.relu(linear(z, hidden_layer2, 'd_linear_1'))
+        #d_linear_2 = tf.nn.relu(linear(d_linear_1, hidden_layer1, 'd_linear_2'))
+        d_linear_1 = tf.layers.dense(inputs=z, units=hidden_layer2, activation=tf.nn.leaky_relu, name='d_linear_1')
+        d_linear_1 = tf.layers.dropout(d_linear_1, rate=0.5)
+        d_linear_2 = tf.layers.dense(inputs=d_linear_1, units=hidden_layer1, activation=tf.nn.leaky_relu, name='d_linear_2')
+        d_linear_2 = tf.layers.dropout(d_linear_2, rate=0.5)
+        logits = tf.layers.dense(inputs=d_linear_2, units=input_dim, activation=None)
+        prob = tf.nn.sigmoid(logits)
     return prob, logits
 
 
@@ -396,6 +407,12 @@ def train():
             ##X_norm = tf.div(tf.add(X, 1.), 2)
             #X_norm = tf.div(tf.add(X, -1.0*np.min(X)), 2)   ### normalize by the absolute min values
             X_norm = X   ### normalize by the absolute min values
+        train_data, test_data, num_train, num_test = train_test_split_my_data(data_dir, pattern='Data*.csv', withlabel=False)
+        
+        num_train = train_data.shape[0]
+        num_test = test_data.shape[0]
+        #ipdb.set_trace()
+        train_batch = EEG_data(train_data, pattern=pattern, withlabel=False, num_samples=input_dim, batch_size=batch_size)
 
     ## restore model
     with tf.name_scope('Latent_variable'):
@@ -408,7 +425,8 @@ def train():
         z_sample = sample_z(z_mu, z_logvar)
         #ipdb.set_trace()
         decoder_output, logits = decoder(z_sample)
-        tf.summary.activation('decode', decoder_output)
+        tf.summary.histogram("decode", decoder_output)
+
         
         if args.TRAIN_AUDIO:
             # audio input "de-normalization"
@@ -488,14 +506,15 @@ def train():
                 batch_loss_tot = 0
                 for iteration in range(n_batches):
                     if args.TRAIN_AUDIO:
-                        #batch_x = train_batch.next()   ### batch_size*input_dim
-                        batch_x = train_batch.__next__()   ### batch_size*input_dim
+                        batch_x = train_batch.next()   ### python2.7 batch_size*input_dim
+                        #batch_x = train_batch.__next__()   ### python3 batch_size*input_dim
                         
                     else:
                         batch_x, _ = mnist.train.next_batch(batch_size)
 
                     noisy_batch = batch_x 
                     # Train
+                    batch_x = np.reshape(batch_x, [-1, input_dim])
                     sess.run(train_op, feed_dict={X: batch_x, X_noisy: noisy_batch, learning_rate: lr(epoch)})                                           
                     
                     
@@ -507,8 +526,11 @@ def train():
                 loss_epoch.append(batch_loss_tot / (count) )
                     
                 if epoch % 1 == 0:
-                    rand_ind = np.random.choice(test_data.shape[0], 12)
+                    #ipdb.set_trace()
+                    rand_ind = np.random.choice(num_test, 81)
                     examples_test = test_data[rand_ind, :]
+                    test_data = np.reshape(test_data, [-1, input_dim])
+                    examples_test = np.reshape(examples_test, [-1, input_dim])
                     loss, recon = sess.run([vae_loss, decoder_output], feed_dict={X: test_data, X_noisy: test_data})
                     recon = sess.run( decoder_output, feed_dict={X: examples_test, X_noisy: examples_test})
                     loss_test.append(loss)
@@ -516,15 +538,19 @@ def train():
 
                 if epoch % 50 == 0:
                     
-                    fig, axs = plt.subplots(6, 2, figsize=(20,10))  ##, subplot_kw={'xticks': []}
+                    fig, axs = plt.subplots(9, 9, figsize=(20,10))  ##, subplot_kw={'xticks': []}
                     #fig.set_title("Reconstructed samples")
                     for ind, ax in enumerate(axs.flat):
-                        ax.plot(np.arange(input_dim)/512.0, recon[ind, :], 'c', label='recon')
-                        ax.plot(np.arange(input_dim)/512.0, examples_test[ind, :], 'm', label='original')
+                        #ax.plot(np.arange(input_dim)/512.0, recon[ind, :], 'c', label='recon')
+                        #ax.plot(np.arange(input_dim)/512.0, examples_test[ind, :], 'm', label='original')
+                        ax.plot(np.arange(input_dim) / 512.0, recon[ind, :], 'c', label='recon')
+                        ax.plot(np.arange(input_dim) / 512.0, examples_test[ind, :], 'm', label='original')
+                        #plt.setp(ax.get_xticklabels(), visible = False)
+                        plt.setp(ax.get_yticklabels(), visible = False)
                     #ipdb.set_trace()
                     axs.flat[1].legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-                    axs.flat[-2].set_xlabel('time / s')
-                    axs.flat[-1].set_xlabel('time / s')
+                    fig.text(0.5, 0.05, 'time / s', fontsize=22)
+                    fig.text(0.05, 0.5, 'Normalized amplitude', fontsize=22)
                     plt.savefig(results_dir +'Epoch_{}_recon_ori_test.png'.format(epoch), format='png')
                     plt.close()
 

@@ -48,25 +48,32 @@ save_every = 2
 test_every = 100
 smooth_win_len = 20
 ori_len = 4097  #1280   ## 
+seq_len = 4097  #1280   ## 
 ifnorm = True
 width = 1  # with augmentation 2   ### data width
 channels = 1
-ifslide = True  #False    ##
+ifcrop = True   ##False   # 
+if ifcrop:
+    crop_len = 3800
+    seq_len = crop_len
+else:
+    crop_len = ori_len
+    
+ifslide = False    ##True  #
 if ifslide:
-    seq_len = 80          ## 76 is from the correlation distribution result
+    ## 76 is from the correlation distribution result
     majority_vote = True
     post_process = 'majority_vote'   #'averaging_window'    ##
-    window = seq_len
-    stride = seq_len // 5
-    if ((ori_len - window) % stride) == 0:
-        num_seg = (ori_len - window) // stride + 1
+    window = 80
+    stride = window // 5
+    if ((seq_len - window) % stride) == 0:
+        num_seg = (seq_len - window) // stride + 1
     else:
-        num_seg = (ori_len - window) // stride
+        num_seg = (seq_len - window) // stride
     ### use a 5s window slide over the 20s recording and do classification on segments, and then do a average vote
-    height = seq_len
+    height = window
     x = tf.placeholder('float32', [None, height, width])  #20s recording width of each recording is 1, there are 2 channels
 else:
-    seq_len = ori_len
     majority_vote = False
     post_process = 'None'  #'averaging_window'    ## 
     num_seg = 1
@@ -75,16 +82,13 @@ else:
 print("num_seg", num_seg)
 y = tf.placeholder('float32')
 learning_rate = tf.placeholder('float32')
-ifcrop = False   #True
-if ifcrop:
-    crop_len = 3500
-else:
-    crop_len = ori_len
+
+
 
 
 batch_size = 8  # old: 16     20has a very good result
 num_classes = 3
-epochs = 91
+epochs = 151
 header = None
 
 train_dir = 'data/Bonn_data/'
@@ -95,12 +99,12 @@ pattern='*.csv'
 #mod_params = './module_params.json'
 #with open(mod_params, 'r') as f:
     #params = json.load(f)
-model_name = 'CNN_Tutorial_Resi'
+model_name = 'CNN_Tutorial'   ##'ResNet'   ###
 version = 'Bonn_{}'.format( model_name)
 #CNN_Tutorial  CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
 
-rand_seed = np.random.choice(200000)
-#rand_seed = 922
+#rand_seed = np.random.choice(200000)
+rand_seed = 140376
 np.random.seed(rand_seed)
 print('rand seed', rand_seed)
 
@@ -121,15 +125,15 @@ def postprocess(prediction, num_seg=10, Threshold=0.5):
 
                     
 def evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, activities=0, crop_len=10000, ifslide=False, ifnorm=True, ifcrop=False, header=None, save_name='results/'):
+    
     acc_epoch_test = 0
     loss_epoch_test = 0
-    
     labels_test, data_test = test_data[:, 0], test_data[:, 1:]
     labels_test_hot =  np.eye((num_classes))[labels_test.astype(int)]
     data_test = np.expand_dims(data_test, 2)
     ### randomly crop a crop_len
     if ifcrop:
-        data_test = random_crop(data_test, crop_len=crop_len)
+        data_test = func.random_crop(data_test, crop_len=crop_len)
     ### add random noise
     #data_test = add_random_noise(data_test, prob=0.5, noise_amp=0.01)
                 
@@ -144,10 +148,11 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, a
         data_test_batch, labels_test_batch  = data_test, labels_test_hot
         
     #test_acc, test_loss, logi, train_vars, act = sess.run([accuracy, cost, outputs, kernels, activities], {x: data_test_batch, y: labels_test_batch, learning_rate:func.lr(epoch)})
-    test_acc, test_loss, logi, train_vars = sess.run([accuracy, cost, outputs, kernels], {x: data_test_batch, y: labels_test_batch, learning_rate:func.lr(epoch)})
+    test_acc, test_loss, logi, train_vars, act = sess.run([accuracy, cost, outputs, kernels, activities], {x: data_test_batch, y: labels_test_batch, learning_rate:func.lr(epoch)})
     ###
-    logits = np.argmax(logi, 1)
-    #ipdb.set_trace()
+    logits = np.max(logi, axis=1)
+
+    
     #if epoch % 5 == 0:
         #for ind, var in enumerate(train_vars):
             #if 'fully' in var:
@@ -180,23 +185,46 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, a
                 #plt.close()
                 #ipdb.set_trace()
         ### go through all the recorded layer activations
-    #if epoch == 5:
-        #for ind, activity in enumerate(act):
-            #name = activity[0:5]
-            #num_sample = 2     ## each class plot 3 samples
-            #### for each label plot 2 examples of all activations
-            #for label in range(num_classes):
-                #### plot conv layer activations            
-                #whole_act= act[activity]   ## get the whole batch activity                 
+    
+    if test_acc > 0.98:
+        if epoch == 0:
+            func.plotTSNE(np.reshape(data_test_batch, [len(labels_test), -1]).astype(np.float64), labels_test, num_classes=num_classes, n_components=2, title="t-SNE ", target_names=['healthy', 'unhealthy', 'seizure'], save_name=save_name+'/Original_data_tsne-epoch{}-'.format(epoch), postfix='on Bonn dataset')
+        for ind, activity in enumerate(act):
+            name = activity[0:5]
+            num_sample = 1     ## each class plot 3 samples
+            ### for each label plot 2 examples of all activations
+            for label in range(num_classes):
+                ### plot conv layer activations            
+                whole_act= act[activity]   ## get the whole batch activity                 
 
-                #if 'conv' in name:
-                    #whole_act = np.reshape(whole_act, [len(labels_test), -1, whole_act.shape[2],  whole_act.shape[3]])  ### reshape back to the whole signal shape                
-                    #sample_layer_act = whole_act[labels_test == label][0:num_sample,...]
-                    #for sample in range(num_sample):
-                        #func.plot_conv_activation_with_ori(data_test[labels_test == label][sample, :, 0], sample_layer_act[sample, ...], label, epoch=epoch, save_name=save_name+'/sample-{}-layer_{}'.format(sample, name))
-                #### plot fully connected activations
-                #elif 'fully' in activity:
-                    #whole_act = np.reshape(whole_act, [len(labels_test), -1])  ### reshape back to the whole signal shape                
+                if 'conv' in name:
+                    whole_act = np.reshape(whole_act, [len(labels_test), -1, whole_act.shape[2],  whole_act.shape[3]])  ### reshape back to the whole signal shape                
+                    sample_layer_act = whole_act[labels_test == label][0:num_sample,...]
+                    for sample in range(num_sample):
+                        func.plot_conv_activation_with_ori(data_test[labels_test == label][sample, :, 0], sample_layer_act[sample, ...], label, epoch=epoch, save_name=save_name+'/sample-{}-layer_{}-'.format(sample, name))
+                ### plot fully connected activations
+                elif 'fully' in activity:
+                    ipdb.set_trace()
+                    whole_act = np.reshape(whole_act, [len(labels_test), -1]).astype(np.float64)  ### reshape back to the whole signal shape
+                    plt.figure()
+                    plt.imshow(whole_act, interpolation='nearest', aspect='auto')
+                    plt.xlabel('# unit in fully connected layer')
+                    plt.ylabel('seizure                 unhealthy                  healthy')
+                    plt.savefig(save_name+'/EEG data that have maximum activation on #{} unit.eps'.format(No), format='eps')
+                    plt.close()
+                    for No_unit in range(whole_act.shape[1]):
+                        actNo = whole_act[:, No_unit]
+                        inds = np.argsort(actNo)[-8:]
+                        fig = plt.figure()
+                        for i in range(8):
+                            ax = fig.add_subplot(4, 2, i+1)
+                            plt.plot(data_test[inds[i]], 'royalblue')
+                            plt.setp(ax.get_xticklabels(), visible = False)
+                            plt.setp(ax.get_yticklabels(), visible = False)
+                        plt.title("EEG signals that unit {} is most responsible".format(No_unit))
+                        plt.savefig(save_name+'/EEG data that have maximum activation on #{} unit.eps'.format(No), format='eps')
+                    func.plotTSNE(whole_act, labels_test, num_classes=num_classes, n_components=2, title="t-SNE", target_names = ['healthy', 'unhealthy', 'seizure'], save_name=save_name+'/fully-activity-epoch{}-sample-{}-'.format(epoch, ), postfix='on Bonn dataset')
+                                
                     #sample_layer_act = whole_act[labels_test == label][0:num_sample,...]
                     #for sample in range(num_sample):
                         #func.plot_fully_activation_with_ori(data_test[labels_test == label][sample, :, 0], sample_layer_act[sample,...], label, epoch=epoch, Fs=173.16, NFFT=256, save_name=save_name+'/sample-{}-layer_{}'.format(sample, name))
@@ -230,7 +258,7 @@ def get_batch_data(data, batch_size=128):
             
 ### construct the network
 def train(x):
-        
+    
     with tf.name_scope('Data'):
         datas = func.read_data('data/Bonn_data/Bonn_all_shuffle_data.csv', header=0, ifnorm=False)   ##500*4098
         train_data, test_data = train_test_split(datas, test_size=0.2, random_state=19974)
@@ -250,16 +278,16 @@ def train(x):
     #outputs, kernels = mod.PyramidPoolingConv(x, output_channels=[2, 4, 8, 16, 32], filter_size=7, dilation_rate=[2, 8, 16, 32], seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
     #outputs, kernels = mod.Inception(x, filter_size=[5, 9],num_block=2, seq_len=height, width=width, channels=channels, num_seg=num_seg, num_classes=num_classes)
     #outputs, kernels = mod.Inception_complex(x, output_channels=[4, 8, 16, 32], filter_size=[5, 9], num_block=2, seq_len=height, width=width, channels=channels, num_classes=num_classes)
-    #outputs, kernels = mod.ResNet(x, num_layer_per_block=3, num_block=4, output_channels=[20, 32, 64, 128], seq_len=height, width=width, channels=channels, num_classes=2)
+    #if model_name == 'ResNet': outputs, kernels = mod.ResNet(x, num_layer_per_block=3, filter_size=[[5, 1], [3, 1]], output_channels=[16, 32, 64], pool_size=[[2, 1]], strides=[2, 1], seq_len=height, width=width, channels=channels, num_classes=num_classes)
     #outputs, kernels = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[3, 1], pool_size=[2, 1], strides=[2, 1], fc=[100], num_classes=num_classes)
 
-    #if model_name == 'CNN_Tutorial': outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[3, 1], strides=[2, 1], filter_size=[[5, 1], [3, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    if model_name == 'CNN_Tutorial': outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[16, 16, 16], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
    
-    if model_name == 'CNN_Tutorial_Resi': outputs, kernels = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 32], seq_len=height, width=width, channels=1, pool_size=[3, 1], strides=[2, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
+    #if model_name == 'CNN_Tutorial_Resi': outputs, kernels = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 32], seq_len=height, width=width, channels=1, pool_size=[3, 1], strides=[2, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
     #outputs, kernels = mod.RNN_Tutorial(x, num_rnn=[50, 50], seq_len=height, width=width, channels=channels, fc=[50, 50], group_size=1, drop_rate=0.5, num_classes = num_classes)
     #ipdb.set_trace()
     #### specify logdir
-    results_dir= 'results/' + version + '/cpu-batch{}/seq_len{}-conv[8, 16, 32, 32]-p4-s4-f9-f5-'.format(batch_size, seq_len)+ datetime
+    results_dir= 'results/' + version + '/cpu-batch{}/seq_len{}-slide{}-conv-16-16-16-p4-s4-f5-f3-'.format(batch_size, seq_len, ifslide)+ datetime
     #cnv4_lstm64testcrop10000-add-noise-CNN-dropout0.3-'.format(batch_size, num_seg, majority_vote), seg_len80-conv8-16-32-f9-f5-p3-s2-fc200-lr0.01-, seg_len80-gru50-50-fc50-fc50-drop0.5-
     logdir = results_dir+ '/model'
 
@@ -294,7 +322,7 @@ def train(x):
         else:
             correct = tf.equal(predictions, tf.argmax(y, 1), name='correct')##
             accuracy = tf.reduce_mean(tf.cast(correct, 'float32'), name='accuracy')
-
+        acc_per_class = tf.metrics.mean_per_class_accuracy(tf.argmax(y, 1), predictions, num_classes)
         ### auc always 0.0, https://stackoverflow.com/questions/49887325/tensorflow-always-getting-an-auc-value-of-0
         area_under_curve = tf.contrib.metrics.streaming_auc( predictions=outputs, labels=y, name='auc')[1]
 
@@ -308,6 +336,7 @@ def train(x):
                                    epsilon=1e-08).minimize(cost)###,
     #optimizer = tf.train.RMSPropOptimizer(0.01).minimize(cost)   ### laerning rate 0.01 works
     #optimizer = tf.train.AdagradOptimizer(0.001).minimize(cost)
+    #ipdb.set_trace()
     #################### Set up logging for TensorBoard.
     writer = tf.summary.FileWriter(logdir)
     writer.add_graph(tf.get_default_graph())
@@ -316,6 +345,9 @@ def train(x):
     saver = tf.train.Saver(max_to_keep= 20)
     tf.set_random_seed(rand_seed)
     with tf.Session() as sess:
+        init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
+        sess.run(init_op)
+        #ipdb.set_trace()
         try:
             saved_global_step = func.load_model(saver, sess, restore_from)
             if is_overwritten_training or saved_global_step is None:
@@ -329,8 +361,7 @@ def train(x):
                   'the previous model.')
             raise
             
-        init_op = tf.group(tf.global_variables_initializer(), tf.local_variables_initializer())
-        sess.run(init_op)
+        
         
         #coord = tf.train.Coordinator()
         #threads = tf.train.start_queue_runners(coord=coord)
@@ -386,7 +417,7 @@ def train(x):
                     print('epoch', epoch, 'batch:',batch, 'loss:', c, 'train-accuracy:', acc)
             ###################### test ######################################
             if epoch % 1 == 0:
-                acc_epoch_test, loss_epoch_test, logits = evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, crop_len=crop_len, ifslide=ifslide, ifnorm=ifnorm, ifcrop=ifcrop, header=header, save_name=results_dir)
+                acc_epoch_test, loss_epoch_test, logits = evaluate_on_test(sess, epoch, accuracy, cost, outputs, test_data, kernels, crop_len=crop_len, ifslide=ifslide, activities=activities, ifnorm=ifnorm, ifcrop=ifcrop, header=header, save_name=results_dir)
                 print('epoch', epoch, 'batch:',batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', acc_epoch_test)
             ######################################################## activities,
                 

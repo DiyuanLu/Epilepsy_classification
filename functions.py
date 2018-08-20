@@ -74,13 +74,15 @@ def save_model(saver, sess, logdir, step):
         os.makedirs(logdir)
 
     saver.save(sess, checkpoint_path, global_step=step)
-    print(' Done.')
+    print('Restore Done.')
     
 
 def load_model(saver, sess, save_dir):
     #print('Trying to restore saved checkpoints from {} ...'.format(logdir),
           #end='')
     ckpt = tf.train.get_checkpoint_state(save_dir)
+    ### get all variables
+    ## vars_in_checkpoint = tf.train.list_variables(os.path.join("model_ex1"))
     if ckpt:
         print('  Checkpoint found: {}'.format(ckpt.model_checkpoint_path))
         global_step = int(ckpt.model_checkpoint_path
@@ -665,35 +667,73 @@ def plotTSNE(data, labels, num_classes=2, n_components=3, title="t-SNE", target_
     param:
         data: 2d array shape: batch*seq_len*width
         label: 1d array, int labels'''
-
     from tsne import bh_sne
+    from mpl_toolkits.mplot3d import Axes3D
+    
+    data = data.astype(np.float64)
+    labels = labels.astype(np.int)    
     tsne_results = bh_sne(data, d=n_components)
+    
     #tsne_results = TSNE(n_components=3, random_state=99).fit_transform(data)
     
     #colors =plt.cm.get_cmap("cool", num_classes)
-    cmap=['orchid', 'fuchsia',  'indigo', 'aqua', 'darkturquoise', 'mediumseagreen', 'darkgreen','slateblue', 'royalblue', 'cornflowerblue', 'navy',  'mediumaquamarine', 'lightcoral']
-    colors = np.random.choice(cmap, num_classes)
-
+    colors=['orchid', 'indigo', 'royalblue']
+    #colors = np.random.choice(cmap, num_classes)
+    markers = ['o', '*', '^']
     fig = plt.figure()
     if n_components == 3:
         vis_x = tsne_results[:, 0]
         vis_y = tsne_results[:, 1]
         vis_z = tsne_results[:, 2]
+        ipdb.set_trace()
         ax = fig.add_subplot(111, projection='3d')        
-        for i, target_name in zip(colors, np.arange(num_classes), target_names):
-            ax.scatter(tsne_results[labels == i, 0], tsne_results[labels == i, 1], tsne_results[labels == i, 2], color=color, alpha=.8,label=target_name)
+        for color, marker, i, target_name in zip(colors, markers, np.arange(num_classes), target_names):
+            ax.scatter(tsne_results[labels == i, 0], tsne_results[labels == i, 1], tsne_results[labels == i, 2], color=color, alpha=.8, marker=marker, linewidth=3, label=target_name)
+        plt.setp(ax.get_xticklabels(), visible = False)
+        plt.setp(ax.get_yticklabels(), visible = False)
+        plt.setp(ax.get_zticklabels(), visible = False)
+
     elif n_components == 2:
         vis_x = tsne_results[:, 0]
         vis_y = tsne_results[:, 1]
         ax = fig.add_subplot(111)
-        for color, i, target_name in zip(colors, np.arange(num_classes), target_names):
-            ax.scatter(tsne_results[labels == i, 0], tsne_results[labels == i, 1], color=color, alpha=.8, label=target_name)###lw=2,
-    plt.legend(loc='best', shadow=False, scatterpoints=1)
+        ipdb.set_trace()
+        for color, marker, i, target_name in zip(colors, markers, np.arange(num_classes), target_names):
+            ax.scatter(tsne_results[labels == i, 0], tsne_results[labels == i, 1], color=color, alpha=.8, linewidth=3, marker=marker, label=target_name)###lw=2,
+        plt.setp(ax.get_xticklabels(), visible = False)
+        plt.setp(ax.get_yticklabels(), visible = False)
+    plt.legend(loc='best', shadow=False, scatterpoints=3)
     #plt.scatter(vis_x, vis_y, c=label, cmap=plt.cm.get_cmap("cool", num_classes))   ##
-    plt.title("t-SNE-{}".format(postfix))
-    plt.savefig(save_name+"t-SNE-{}.png".format(postfix), format='png')
+    #plt.title(title + "{}".format(postfix))
+    plt.savefig(save_name+"t-SNE-{}.eps".format(postfix), format='eps')
     plt.close()
 
+
+def plot_1d_filter_in_grid(filters, save_name='/results/'):
+    '''plot 1d filters in a grid sharing both y and x axis
+    params:
+        filters: shape(9, 1, in_channels, out_channels)
+        save_name: please give the final name of the figure: /result/conv1'''
+    ### reshape the filters to the last dimension
+    data = filters.reshape(filters[0], filters[1], 1, -1)
+    num_filter = data.shape[-1]
+    row, col = factorization(num_filter)
+    fig = plt.figure()
+    for ii in range(row*col):
+        if ii == 0:
+            ax0 = fig.add_subplot(row, col, ii+1)
+            plt.plot(data[:, 0, 0, ii])
+            plt.setp(ax0.get_xticklabels(), visible = False)
+            plt.setp(ax0.get_yticklabels(), visible = False)
+        ax = fig.add_subplot(row, col, ii+1, sharex=ax0, sharey=ax0)
+        plt.plot(data[:, 0, 0, ii])
+        plt.setp(ax.get_xticklabels(), visible = False)
+        plt.setp(ax.get_yticklabels(), visible = False)
+        fig.subplots_adjust(hspace=0)
+        fig.subplots_adjust(wspace=0)
+    plt.savefig(save_name+'.eps', format='eps')
+    plt.close()
+    
 
 def plot_PCA(data, labels, n_components=3, num_classes=2, colors = ['navy', 'turquoise'], target_names = ['non-focal', 'focal'], title='PCA', postfix='band_PSD'):
     from sklearn.decomposition import PCA
@@ -714,7 +754,7 @@ def plot_PCA(data, labels, n_components=3, num_classes=2, colors = ['navy', 'tur
 
     plt.legend(loc='best', shadow=False, scatterpoints=1)
     plt.title("PCA on {}".format(postfix))
-    plt.savefig(save_name+"PCA-on {}.png".format(postfix), format='png')
+    plt.savefig(save_name+"/PCA-on {}.eps".format(postfix), format='eps')
     plt.close()
 #def plotOnePair(data):
     #'''plot the original data-pair'''
