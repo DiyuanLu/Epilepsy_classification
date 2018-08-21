@@ -627,7 +627,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
     return logits, kernels, activities
 
 
-def CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=10240, width=2, channels=1, pool_size=[4, 1], strides=[4, 1], filter_size=[5, 1], num_att=3, num_classes=2, fc=[300], num_seg=5, att_dim=20):
+def CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=10240, width=2, channels=1, pool_size=[4, 1], strides=[4, 1], filter_size=[5, 1], num_att=3, num_classes=2, fc=[300], num_seg=5, att_dim=20, ifattnorm=True):
     ''' Network with attention is used together with segmenting original data into several segments.
     https://github.com/exelban/tensorflow-cifar-10/blob/master/include/model.py
     with attention module adapted from http://openaccess.thecvf.com/content_cvpr_2018/papers/Li_Diversity_Regularized_Spatiotemporal_CVPR_2018_paper.pdf
@@ -744,12 +744,13 @@ def CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=10240, width=
         s_att = tf.reshape(s_att, [-1, s_att.shape_as_list[1], 1, s_att.shape_as_list[2]])  #(-1, K, 1, L)
         diversity = s_att
         ## Repeat elements to get shape (-1, K, D, L)
-        s_att_repeat = np.repeat(s_att, D, axis=2)   ##(-1, K, D, L)
+        s_att_repeat = tf.tile(s_att, [1, 1, D, 1])   ##(-1, K, D, L)
         
         net = tf.reshape(net, [-1, 1, D, num_seg])   ##shape [-1, 1, D, L]
         ## Repeat net to get shape [-1, K, D, L]
-        net_repeat = np.repeat(net, K, axis=1)        ##[-1, K, D, L]
-        
+        net_repeat = tf.tile(net, [1, K, 1, 1])        ##[-1, K, D, L]
+
+        ### Attention gated feature
         net = net_repeat * e_att_repeat
         net = tf.reshape(net, [-1, D, num_seg]) ##[-1*K, D, L]
         net = tf.layers.average_pooling2d(net, net.shape.as_list[2]) * net.shape.as_list[2]  ##[-1*K, D]
@@ -758,14 +759,19 @@ def CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=10240, width=
         net = tf.layers.dense(inputs=net, units=att_dim, activation=None)   #[-1*K, att_dim]
 
         net = tf.reshape(net, [-1, K, att_dim])##[-1, K, att_dim]
-
-        net = tf.reshape(net, [-1, seqlen, K, att_dim])
-        
-
-        #for ind, units in enumerate(fc):
-            #net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.leaky_relu)
-            ##activities[net.name] = net
-            #net = tf.layers.dropout(net, rate=0.5)
+               
+        if ifattnorm:
+            net = tf.norm(net, ord=2, axis=2, keep_dims=True)  ##[-1, K, 1]
+            net = tf.tile(net, [-1, 1, att_dim])  #[-1, K, att_dim]
+            
+    with tf.variable_scope('fc_out') as scope:
+        ### after attention gating, pass to FC layer
+        net = tf.reshape(net, [-1, net.shape_as_list[1]*net.shape_as_list[2]])
+        print(scope.name + "shape", net.shape.as_list())
+        for ind, units in enumerate(fc):
+            net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.leaky_relu)
+            #activities[net.name] = net
+            net = tf.layers.dropout(net, rate=0.5)
             
             #print(scope.name + "shape", net.shape.as_list())
         ##tf.summary.histogram("dense_out", net)
