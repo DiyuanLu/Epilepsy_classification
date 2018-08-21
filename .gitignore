@@ -6,4 +6,5 @@
 *.pyc
 *.pyo
 *csv
-
+*.pdf
+*.png
