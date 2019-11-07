@@ -79,6 +79,7 @@ def find_files(directory, pattern='Data*.csv', withlabel=True):
                         label = '1'
                     elif 'S' in filename:
                         label = '2'
+                #ipdb.set_trace()
                 files.append((os.path.join(root, filename), label))
             else:  # only get names
                 files.append(os.path.join(root, filename))
@@ -271,14 +272,17 @@ def get_corr_len(datas, labels, save_name='results/', postfix='Nonfocal'):
     plt.close()
     return corr_len
 
-
-
+def filter_arti_spike(data):
+    '''filter out the artifact of extreme high spike value because of eletronics interference'''
+    delta = data[0:-1] - data[1:]
+    indics = np.where(delta>1000)
 #######################################################################################
 data_dir = "../data/Bonn_data/"
 
 #data_dir = "test_files/"
-files = find_files(data_dir, pattern="Bonn*.csv", withlabel=True)
-
+#files = find_files(data_dir, pattern="Bonn_all*.csv", withlabel=False)
+files = find_files(data_dir, pattern="Bonn*.csv", withlabel=False)
+ipdb.set_trace()
 datas = np.zeros((len(files), 4097+1))
 labels = np.array(files)[:, 1].astype(np.int)
 filenames = np.array(files)[:, 0].astype(np.str)

@@ -202,8 +202,6 @@ def get_clusters(data, num_clusters=5, window=64, save_name='/results'):
             ##ax.plot(data[ind_cluster[ii], :])
         ax.plot(data[ind_cluster, :].T)
                 
-            
-    ipdb.set_trace()
     
     plt.savefig(save_name+"vis_win_{}_F_samples_from_cluster{}.png".format(window, cluster), format='png')
     plt.close()

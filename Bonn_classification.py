@@ -41,7 +41,7 @@ def get_arguments():
                         'Cannot use with --logdir.')
     return parser.parse_args()
     
-
+import datetime
 datetime = '{0:%Y-%m-%dT%H-%M-%S}'.format(datetime.datetime.now())
 plot_every = 100
 save_every = 2
@@ -52,7 +52,7 @@ seq_len = 4097  #1280   ##
 ifnorm = True
 width = 1  # with augmentation 2   ### data width
 channels = 1
-ifcrop = True   ##False   # 
+ifcrop = False   # True   ##
 if ifcrop:
     crop_len = 3800
     seq_len = crop_len
@@ -99,7 +99,7 @@ pattern='*.csv'
 #mod_params = './module_params.json'
 #with open(mod_params, 'r') as f:
     #params = json.load(f)
-model_name = 'CNN_Tutorial'   ##'ResNet'   ###
+model_name = 'CNN_Tutorial'   ##CNN_Tutorial_attention'ResNet'   ###
 version = 'Bonn_{}'.format( model_name)
 #CNN_Tutorial  CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
 
@@ -281,11 +281,12 @@ def train(x):
     #if model_name == 'ResNet': outputs, kernels = mod.ResNet(x, num_layer_per_block=3, filter_size=[[5, 1], [3, 1]], output_channels=[16, 32, 64], pool_size=[[2, 1]], strides=[2, 1], seq_len=height, width=width, channels=channels, num_classes=num_classes)
     #outputs, kernels = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[3, 1], pool_size=[2, 1], strides=[2, 1], fc=[100], num_classes=num_classes)
 
-    if model_name == 'CNN_Tutorial': outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[16, 16, 16], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    #if model_name == 'CNN_Tutorial': outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[16, 16, 16], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[200]) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
    
     #if model_name == 'CNN_Tutorial_Resi': outputs, kernels = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 32], seq_len=height, width=width, channels=1, pool_size=[3, 1], strides=[2, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
     #outputs, kernels = mod.RNN_Tutorial(x, num_rnn=[50, 50], seq_len=height, width=width, channels=channels, fc=[50, 50], group_size=1, drop_rate=0.5, num_classes = num_classes)
     #ipdb.set_trace()
+    if model_name == 'CNN_Tutorial_attention': outputs, kernels, activities, diversity = mod.CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, pool_size=[4, 1], strides=[4, 1], filter_size=[5, 1], num_att=3, num_classes=num_classes, fc=[200], gird_height=5, gird_width=1, att_dim=64)
     #### specify logdir
     results_dir= 'results/' + version + '/cpu-batch{}/seq_len{}-slide{}-conv-16-16-16-p4-s4-f5-f3-'.format(batch_size, seq_len, ifslide)+ datetime
     #cnv4_lstm64testcrop10000-add-noise-CNN-dropout0.3-'.format(batch_size, num_seg, majority_vote), seg_len80-conv8-16-32-f9-f5-p3-s2-fc200-lr0.01-, seg_len80-gru50-50-fc50-fc50-drop0.5-
@@ -303,9 +304,21 @@ def train(x):
     # if the trained model is written into an arbitrary location.
     is_overwritten_training = logdir != restore_from
     
-
+    
     with tf.name_scope('loss'):
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name='cost')
+        if model_name == 'CNN_Tutorial_attention':
+            reg = tf.sqrt(diversity)
+            reg = tf.matmul(reg, tf.transpose(reg, [0, 2, 1]))
+            #ipdb.set_trace()
+            reg = reg-tf.eye(reg.shape.as_list()[1])
+            reg = tf.pow(reg, 2)
+            reg = tf.reduce_sum(reg) + 1e-5
+            reg = tf.sqrt(reg)
+            reg = tf.reduce_mean(reg)
+            loss = cost + reg
+            tf.summary.scalar('diversity', reg)
+            tf.summary.scalar('loss', loss)
     with tf.name_scope('performance'):
         predictions = tf.argmax(outputs, 1)
         if post_process == 'majority_vote':

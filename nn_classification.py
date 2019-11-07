@@ -14,6 +14,7 @@ import pickle
 from sklearn.model_selection import train_test_split
 import argparse
 import sys
+from tqdm import tqdm
 #from tensorflow.python.framework import ops
 #ops.reset_default_graph()
 
@@ -52,7 +53,7 @@ ori_len = 10240
 seq_len = 10240  #1280   ## 
 start = 0
 ifnorm = True
-ifcrop = True    ###False   #
+ifcrop = False   #True    ###
 if ifcrop:
     crop_len = 9800
     seq_len = crop_len
@@ -106,14 +107,13 @@ pattern='Data*.csv'
 #mod_params = './module_params.json'
 #with open(mod_params, 'r') as f:
     #params = json.load(f)
-model_name = 'CNN_Tutorial_attention'  ##'ResNet'CNN_Tutorial
+model_name = 'CNN_Tutorial'  ##'ResNet'CNN_Tutorial
 version = 'whole_{}_{}'.format(pattern[0:4], model_name)# AggResNet CNN_Tutorial CNN_Tutorial_Resi DeepConvLSTM   Atrous_CNN     PyramidPoolingConv  CNN_Tutorial       #DeepCLSTM'whole_{}_DeepCLSTM'.format(pattern[0:4]) Atrous_      #### DeepConvLSTMDeepCLSTMDilatedCNN
 optimizer_name = "Adam"
 #rand_seed = np.random.choice(200000)
-rand_seed = 175861
+rand_seed = 299
 np.random.seed(rand_seed)
 print('rand seed', rand_seed)
-
 
 
 def postprocess(prediction, num_seg=10, Threshold=0.5):
@@ -137,9 +137,10 @@ def average_window(prediction, window=4, threshold=0.6):
 
     return result
 
-def evaluate_on_test(sess, epoch, accuracy, cost, outputs, activities=0, crop_len=10000, ifslide=False, ifnorm=True, ifcrop=False, header=None, save_name='results/'):
+def evaluate_on_test(sess, epoch, accuracy, cost, confusion_matrix, outputs, activities=0, crop_len=10240, ifslide=False, ifnorm=True, ifcrop=False, header=None, save_name='results/'):
     acc_epoch_test = 0
     loss_epoch_test = 0
+    confusion = 0
     data_dir = test_dir
     filename  = 'ori_test_data_label.npz'
     num_classes = 2
@@ -152,7 +153,8 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, activities=0, crop_le
         data_test, labels_test = func.load_and_save_data_to_npz(data_dir, pattern=pattern, withlabel=True, ifnorm=True, num_classes=num_classes, save_name=filename)
 
     labels_test_hot =  np.eye((num_classes))[labels_test.astype(int)]
-    ACT = np.zeros((len(labels_test_hot), 200))   ### collect fully connected activity
+    #ACT = np.zeros((len(labels_test_hot), 200))   ### collect fully connected activity
+    ACT = []   ### collect fully connected activity
     ### randomly crop a crop_len
     if ifcrop:
         data_test = func.random_crop(data_test, crop_len=crop_len)
@@ -170,18 +172,21 @@ def evaluate_on_test(sess, epoch, accuracy, cost, outputs, activities=0, crop_le
             #labels_test_batch = labels_test_hot[jj*50: (jj+1)*50, :]
         else:
             data_test_batch, labels_test_batch  = data_test[jj*test_bs: (jj+1)*test_bs, :, :], labels_test_hot[jj*test_bs: (jj+1)*test_bs, :]
-            
+
         test_acc, test_loss, logi, act = sess.run([accuracy, cost, outputs, activities], {x: data_test_batch, y: labels_test_batch, learning_rate:func.lr(epoch)})
 
         logits[jj*test_bs : (jj+1)*test_bs] = np.max(logi, axis=1)
-        ACT[jj*test_bs : (jj+1)*test_bs, ...] = act
+        #ipdb.set_trace()
+        #ACT[jj*test_bs : (jj+1)*test_bs, ...] = act
+        #ACT.append(act)
         
         acc_epoch_test += test_acc
         loss_epoch_test += test_loss
-    if acc_epoch_test /(jj + 1) > 0.85:
-        ipdb.set_trace()
-        func.plotTSNE(fc.astype(np.float64), np.argmax(labels_test_batch, axis=1), num_classes=num_classes, n_components=2, title="t-SNE", target_names = ['non-focal', 'focal'], save_name=save_name+'/fully-activity', postfix='t-SNE on Barceona dataset')
-        func.plotTSNE(fc.astype(np.float64), np.argmax(labels_test_batch, axis=1), num_classes=num_classes, n_components=3, title="t-SNE", target_names = ['non-focal', 'focal'], save_name=save_name+'/fully-activity', postfix='t-SNE on Barceona dataset')
+        #confusion += conf
+    #if acc_epoch_test /(jj + 1) > 0.85:
+        #ipdb.set_trace()
+        #func.plotTSNE(fc.astype(np.float64), np.argmax(labels_test_batch, axis=1), num_classes=num_classes, n_components=2, title="t-SNE", target_names = ['non-focal', 'focal'], save_name=save_name+'/fully-activity', postfix='t-SNE on Barceona dataset')
+        #func.plotTSNE(fc.astype(np.float64), np.argmax(labels_test_batch, axis=1), num_classes=num_classes, n_components=3, title="t-SNE", target_names = ['non-focal', 'focal'], save_name=save_name+'/fully-activity', postfix='t-SNE on Barceona dataset')
     
     #func.plot_auc_curve(np.repeat(labels_test, num_seg, axis=0), logits, save_name=save_name+'/epoch_{}_test_'.format(epoch))
     ### input to this function is finally int label
@@ -210,7 +215,7 @@ def train(x):
         print('num_train', labels.shape)
         
         ### tensorflow dataset
-        dataset_train = tf.data.Dataset.from_tensor_slices((files, labels)).repeat().batch(batch_size).shuffle(buffer_size=10000)
+        dataset_train = tf.data.Dataset.from_tensor_slices((files, labels)).shuffle(buffer_size=10000).repeat().batch(batch_size)
         iter = dataset_train.make_initializable_iterator()
         ele = iter.get_next() #you get the filename
             
@@ -229,10 +234,10 @@ def train(x):
     #if model_name == 'ResNet': outputs, kernels = mod.ResNet(x, num_layer_per_block=3, filter_size=[[11, 1], [5, 1]], output_channels=[16, 32, 64], pool_size=[[4, 1]], strides=[4, 1], seq_len=height, width=width, channels=channels, num_classes=2)
     #if model_name == 'AggResNet': outputs, pre = mod.AggResNet(x, output_channels=[8, 16, 32], num_stacks=[3, 3, 3], cardinality=8, seq_len=height, width=width, channels=channels, filter_size=[9, 1], pool_size=[4, 1], strides=[4, 1], fc=[500], num_classes=num_classes)
 
-    #if model_name == 'CNN_Tutorial': outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[16, 32, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[200], iffusion=iffusion, num_seg=num_seg) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
-    #if model_name == 'CNN_Tutorial_Resi': outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[5, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
+    if model_name == 'CNN_Tutorial': outputs, kernels, activities = mod.CNN_Tutorial(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, num_classes=num_classes, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], fc=[500, 200], iffusion=iffusion, num_seg=num_seg) ## works on CIFAR, for BB pool_size=[4, 1], strides=[4, 1], filter_size=[9, 1], fc1=200 works well.
+    #if model_name == 'CNN_Tutorial_Resi': outputs, fc_act = mod.CNN_Tutorial_Resi(x, output_channels=[8, 16, 32, 64], seq_len=height, width=width, channels=1, pool_size=[4, 1], strides=[4, 1], filter_size=[[9, 1], [5, 1]], num_classes=num_classes, fc=[200])
     #if model_name == 'RNN_Tutorial': outputs, kernels = mod.RNN_Tutorial(x, num_rnn=[50, 50], seq_len=height, width=width, channels=channels, fc=[50, 50], drop_rate=0.5, group_size=1, num_classes = num_classes)
-    if model_name == 'CNN_Tutorial_attention': outputs, kernels, activities = mod.CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, pool_size=[4, 1], strides=[4, 1], filter_size=[5, 1], num_att=3, num_classes=num_classes, fc=[300], num_seg=5, att_dim=20)
+    #if model_name == 'CNN_Tutorial_attention': outputs, kernels, activities, diversity = mod.CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=height, width=width, channels=channels, pool_size=[4, 1], strides=[4, 1], filter_size=[5, 1], num_att=5, num_classes=num_classes, fc=[200], gird_height=5, gird_width=1, att_dim=128)
     #ipdb.set_trace()
     #### specify logdir
     results_dir= 'results/' + version + '/cpu-batch{}/seg_len{}-conv16-32-32-p4-s4-f9-f5-fc200-lr0.01-{}-'.format(batch_size, seq_len, optimizer_name)+ datetime
@@ -256,6 +261,18 @@ def train(x):
     with tf.name_scope('loss'):
         
         cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(logits=outputs, labels=y), name='cost')
+        if model_name == 'CNN_Tutorial_attention':
+            reg = tf.sqrt(diversity)
+            reg = tf.matmul(reg, tf.transpose(reg, [0, 2, 1]))
+            #ipdb.set_trace()
+            reg = reg-tf.eye(reg.shape.as_list()[1])
+            reg = tf.pow(reg, 2)
+            reg = tf.reduce_sum(reg) + 1e-5
+            reg = tf.sqrt(reg)
+            reg = tf.reduce_mean(reg)
+            lost = cost + reg
+            tf.summary.scalar('diversity', reg)
+            tf.summary.scalar('loss', lost)
     with tf.name_scope('performance'):
         predictions = tf.argmax(outputs, 1)
         if post_process == 'majority_vote':
@@ -275,6 +292,7 @@ def train(x):
 
         ### auc always 0.0, https://stackoverflow.com/questions/49887325/tensorflow-always-getting-an-auc-value-of-0
         area_under_curve = tf.contrib.metrics.streaming_auc(labels=y, predictions=outputs, name='auc')[1]
+        confusion_matrix = tf.confusion_matrix(labels, predictions, num_classes=num_classes, name='confusion')
 
         tf.summary.scalar('loss', cost)
         tf.summary.scalar('accuracy', accuracy)
@@ -301,12 +319,12 @@ def train(x):
     writer.add_graph(tf.get_default_graph())
     run_metadata = tf.RunMetadata()
     summaries = tf.summary.merge_all()
-    saver = tf.train.Saver(max_to_keep= 20)
+    best_saver = tf.train.Saver(max_to_keep= 3)
 
     with tf.Session() as sess:
         try:
             #ipdb.set_trace()
-            saved_global_step = func.load_model(saver, sess, restore_from)
+            saved_global_step = func.load_model(best_saver, sess, restore_from)
             if is_overwritten_training or saved_global_step is None:
                 # The first training step will be saved_global_step + 1,
                 # therefore we put -1 here for new or overwritten trainings.
@@ -336,10 +354,11 @@ def train(x):
             os.makedirs(results_dir)
         print(results_dir)
         # ipdb.set_trace()
+        best_eval_acc = 0.0
         for epoch in range(epochs):
             acc_epoch_train = 0
             loss_epoch_train = 0
-            for batch in range(num_train//batch_size):#####                
+            for batch in tqdm(range(num_train//batch_size)):#####                
                 save_name = results_dir + '/' + 'step{}_'.format( batch)
                 
                 filename_train, labels_train =  sess.run(ele)   # names, 1s/0s the filename is bytes object!!! TODO
@@ -376,51 +395,37 @@ def train(x):
                 ## accumulate the acc and cost later to average
                 acc_epoch_train += acc
                 loss_epoch_train += c
-                if acc_epoch_train / (batch+1) > 0.91:
-                    ipdb.set_trace()
-                    act_train = sess.run(activities, feed_dict={x: data_train, y: labels_train_hot, learning_rate:func.lr(epoch)})
-                    func.plotTSNE(fc.astype(np.float64), np.argmax(labels_train_hot, axis=1), num_classes=num_classes, n_components=2, title="t-SNE", target_names = ['non-focal', 'focal'], save_name=save_name+'/fully-activity', postfix='t-SNE on Barceona dataset')
-                if batch % 20 == 0:
-                    print('epoch', epoch, 'batch:',batch, 'loss:', c, 'train-accuracy:', acc)
+                #if acc_epoch_train / (batch+1) > 0.91:
+                    #ipdb.set_trace()
+                    #act_train, divers = sess.run([activities, diversity], feed_dict={x: data_train, y: labels_train_hot, learning_rate:func.lr(epoch)})
+                    #func.plotTSNE(fc.astype(np.float64), np.argmax(labels_train_hot, axis=1), num_classes=num_classes, n_components=2, title="t-SNE", target_names = ['non-focal', 'focal'], save_name=save_name+'/fully-activity', postfix='t-SNE on Barceona dataset')
+                
+            print('epoch', epoch, 'train-accuracy:', acc_epoch_train / batch)
             ###################### test ######################################
-            #if epoch % 1 == 0:                                
-                #acc_epoch_test, loss_epoch_test = evaluate_on_test(sess, epoch, accuracy, cost, outputs, crop_len=crop_len, activities=activities, ifslide=ifslide, ifnorm=ifnorm, ifcrop=ifcrop, header=header, save_name=results_dir)
-                #print('epoch', epoch, 'batch:',batch, 'loss:', c, 'train-accuracy:', acc, 'test-accuracy:', acc_epoch_test)
-            '''f, (ax1, ax2, ax3, ax4, ax5) = plt.subplots(5, sharex=True, sharey=True)
-            ax1.plot(np.arange(10240)/ 512.0, F, 'indigo', label='focal'), ax1.legend(), ax1.set_ylabel('Norm_amp.'), ax1.set_xlim([0, 10240/ 512.0]), plt.setp(ax1.get_yticklabels(), visible = False)
-            ax2.plot(np.arange(4097)/ 173.61, data2, 'indigo', label='healthy'), ax2.legend(), ax2.set_ylabel('Norm_amp.'), ax2.set_xlim([0, 4097/ 173.61]), plt.setp(ax2.get_yticklabels(), visible = False)
-            ax3.plot(np.arange(4097)/ 173.61, data3, 'royalblue', label='unhealthy'), ax3.legend(), ax3.set_ylabel('Norm_amp.'), ax3.set_xlim([0, 4097/ 173.61]), plt.setp(ax3.get_yticklabels(), visible = False)
-            ax4.plot(np.arange(4097)/ 173.61, data4, 'royalblue', label='unhealthy'), ax4.legend(), ax4.set_ylabel('Norm_amp.'), ax4.set_xlim([0, 4097/ 173.61]), plt.setp(ax4.get_yticklabels(), visible = False)
-            ax5.plot(np.arange(4097)/ 173.61, data5, 'violet', label='seizure'), ax5.legend(),ax5.set_ylabel('Norm_amp.'), ax5.set_xlim([0, 4097/ 173.61]), plt.setp(ax5.get_yticklabels(), visible = False), ax5.set_xlabel('time / s')
-            fig.subplots_adjust(hspace=0)
-            plt.savefig(save_name+"/Bonn_examples1.eps", format='eps')
-            data1 = func.read_data('data/Bonn_data/Z/Bonn_Z001.csv', ifnorm=True)
-            data1 = func.read_data('data/Bonn_data/O/Bonn_O001.csv', ifnorm=True)
-            data1 = func.read_data('data/Bonn_data/N/Bonn_N001.csv', ifnorm=True)
-            data1 = func.read_data('data/Bonn_data/F/Bonn_F001.csv', ifnorm=True)
-            data1 = func.read_data('data/Bonn_data/S/Bonn_S001.csv', ifnorm=True)'''
+            if epoch % 1 == 0:                                
+                acc_epoch_test, loss_epoch_test = evaluate_on_test(sess, epoch, accuracy, cost, confusion_matrix, outputs, activities=activities, ifslide=ifslide, ifnorm=ifnorm, ifcrop=ifcrop, header=header, save_name=results_dir)
+                print('epoch', epoch, '\ntest-accuracy:', acc_epoch_test)
             ########################################################
                 
             # track training and testing
             loss_total_train.append(loss_epoch_train / (batch + 1))            
             acc_total_train.append(acc_epoch_train / (batch + 1))
-            #loss_total_test.append(loss_epoch_test)            
-            #acc_total_test.append(acc_epoch_test)
+            loss_total_test.append(loss_epoch_test)            
+            acc_total_test.append(acc_epoch_test)
             
-            if epoch % func.get_save_every(epoch) == 0:
-                func.save_model(saver, sess, logdir, epoch)
+            if acc_epoch_test >= best_eval_acc:
+                print("Found new best accuracy {}".format(acc_epoch_test))
+                func.save_model(best_saver, sess, logdir, epoch, best_eval_acc)
                 last_saved_step = epoch
+                best_eval_acc = acc_epoch_test
 
-            #if epoch == 1:
-                #variables = sess.run(kernels, feed_dict={x: data_train, y: labels_train_hot, learning_rate:func.lr(epoch)})
-            
-            #if epoch % 1 == 0:
+            if epoch % 1 == 0:
                 
-                #func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=False, hlines=[0.8, 0.85, 0.9], window_len=smooth_win_len, xlabel= 'training epochs', ylabel='accuracy', colors=['darkcyan', 'm'], ylim=[0.45, 1.05], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ '/learning_curve_epoch_{}_seed{}'.format(epoch, rand_seed))
+                func.plot_smooth_shadow_curve([acc_total_train, acc_total_test], ifsmooth=False, hlines=[0.8, 0.85, 0.9], window_len=smooth_win_len, xlabel= 'training epochs', ylabel='accuracy', colors=['darkcyan', 'm'], ylim=[0.45, 1.05], title='Learing curve', labels=['accuracy_train', 'accuracy_test'], save_name=results_dir+ '/learning_curve_epoch_{}_seed{}'.format(epoch, rand_seed))
 
-                #func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, hlines=[], colors=['c', 'violet'], ylim=[0.05, 0.9], xlabel= 'training epochs', ylabel='loss', title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ '/loss_epoch_{}_seed{}'.format(epoch, rand_seed))
+                func.plot_smooth_shadow_curve([loss_total_train, loss_total_test], window_len=smooth_win_len, ifsmooth=False, hlines=[], colors=['c', 'violet'], ylim=[0.05, 0.9], xlabel= 'training epochs', ylabel='loss', title='Loss',labels=['training loss', 'test loss'], save_name=results_dir+ '/loss_epoch_{}_seed{}'.format(epoch, rand_seed))
 
-                #func.save_data_to_csv((acc_total_train, loss_total_train, acc_total_test, loss_total_test), header='accuracy_train,loss_train,accuracy_test,loss_test', save_name=results_dir + '/' + datetime + 'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
+                func.save_data_to_csv((np.array(acc_total_train), np.array(loss_total_train), np.array(acc_total_test), np.array(loss_total_test)), header='accuracy_train,loss_train,accuracy_test,loss_test', save_name=results_dir + '/' + datetime + 'batch_accuracy_per_class.csv')   ### the header names should be without space! TODO
 
     ##Stop the threads
     #coord.request_stop()

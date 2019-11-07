@@ -13,20 +13,21 @@ import os
 import sys
 from functools import partial      ### for multiprocessing
 import matplotlib.pyplot as plt
-import ipdb
+# import ipdb
 import random
 from scipy.stats import zscore
 import pandas as pd
 
 # import scipy.stats as stats
 import matplotlib.pylab as pylab
-params = {'legend.fontsize': 12,
-          'figure.figsize': (10, 8.8),
-         'axes.labelsize': 16,
+base = 20
+params = {'legend.fontsize': base,
+          'figure.figsize': (16, 11),
+         'axes.labelsize': base,
          #'weight' : 'bold',
-         'axes.titlesize':16,
-         'xtick.labelsize':12,
-         'ytick.labelsize':12}
+         'axes.titlesize':base+3,
+         'xtick.labelsize':base-2,
+         'ytick.labelsize':base-2}
 pylab.rcParams.update(params)
 import matplotlib
 
@@ -52,9 +53,9 @@ def get_batch_size(epoch):
     elif epoch > 10:
         batch_size = 16
     elif epoch > 5:
-        batch_size = 32 
+        batch_size = 32
     return batch_size
-    
+
 def get_save_every(epoch):
     save_every = 2
     if epoch > 30:
@@ -63,9 +64,9 @@ def get_save_every(epoch):
         save_every = 3
 
     return save_every
-    
-def save_model(saver, sess, logdir, step):
-    model_name = 'model.ckpt'
+
+def save_model(saver, sess, logdir, step, acc):
+    model_name = 'model-{}.ckpt'.format(acc)
     checkpoint_path = os.path.join(logdir, model_name)
     print('Storing checkpoint to {} ...'.format(logdir))
     sys.stdout.flush()
@@ -75,7 +76,7 @@ def save_model(saver, sess, logdir, step):
 
     saver.save(sess, checkpoint_path, global_step=step)
     print('Restore Done.')
-    
+
 
 def load_model(saver, sess, save_dir):
     #print('Trying to restore saved checkpoints from {} ...'.format(logdir),
@@ -96,7 +97,7 @@ def load_model(saver, sess, save_dir):
     else:
         print(' No checkpoint found.')
         return None
-        
+
 
 ###################### files operation##########################
 def find_files(directory, pattern='Data*.csv', withlabel=True):
@@ -129,7 +130,7 @@ def find_files(directory, pattern='Data*.csv', withlabel=True):
                 files.append(os.path.join(root, filename))
     print(len(files))
     random.shuffle(files)
-    return files 
+    return files
 
 
 def rename_files(filename):
@@ -142,11 +143,10 @@ def remove_files(filename):
 def multiprocessing_func(data_dir):
     '''PicklingError: Can't pickle <type 'function'>: attribute lookup __builtin__.function failed
     PLEASE disable the import ipdb!!!'''
-    filenames = find_files(data_dir, pattern='*.csv', withlabel=False )
-    print(filenames)
-    #ipdb.set_trace()
+    filenames = find_files(data_dir, pattern='Data*.csv', withlabel=False )
+
     pool = multiprocessing.Pool()
-    version =  'rename'  #"augment_data" #'remove'       #  'rename'  #'downsampling' #'save_tfrecord'#     #None#'rename'      # 'rename'        #
+    version =  're_save'  #"augment_data" #'remove'       #  'rename'  #'downsampling' #'save_tfrecord'#     #None#'rename'      # 'rename'        #
     if version == 'downsampling':
         # for ds in [2]:
         pool.map(partial(downsampling, ds_factor=2), filenames)
@@ -162,6 +162,8 @@ def multiprocessing_func(data_dir):
         print("tfrecord saved")
     elif version == "augment_data":
         pool.map(augment_data_with_ar1, filenames)
+    elif version == "re_save":
+        pool.map(re_save_data, filenames)
     pool.close()
 
 ###################### Data munipulation##########################
@@ -194,12 +196,12 @@ def get_tfrecords_next_batch(data_dir, pattern='*.tfrecords', seq_len=10240, wid
     Return:
         data: batch_size*seq*width*channel
         label: int label'''
-        
+
     files = find_files(data_dir, pattern=pattern, withlabel=withlabel)
 
     feature = {'data': tf.FixedLenFeature([], tf.string),
                 'label': tf.FixedLenFeature([], tf.int64)}
-    
+
     ### Create a list of filenames and pass it to a queue
     filename_queue = tf.train.string_input_producer(files, num_epochs=epochs)   ### the files have to a list
 
@@ -211,10 +213,10 @@ def get_tfrecords_next_batch(data_dir, pattern='*.tfrecords', seq_len=10240, wid
     features = tf.parse_single_example(serialized_example, features=feature)
     ####Convert the image data from string back to the numbers
     data = tf.decode_raw(features['data'], tf.float64)
-    
+
     ### Cast label data into int32
     labels = tf.cast(features['label'], tf.int32)   ### the feature name should be exactly the same as you save them
-    
+
     ## define the shape
     data = tf.reshape(data, [seq_len, width, channels])
     ### Creates batches by randomly shuffling tensors
@@ -224,7 +226,7 @@ def get_tfrecords_next_batch(data_dir, pattern='*.tfrecords', seq_len=10240, wid
 
 
 
-    
+
 def augment_data_with_ar1(filename):
     '''Read data from file and compute lag1 autocorrelation and then save (original data, ar1)
     fix value pad the first window size autocorrelation'''
@@ -243,7 +245,14 @@ def augment_data_with_ar1(filename):
     np.savetxt(save_name, aug_data, header="datax,datay,corrx,corry", delimiter=',', comments='')
     # aug_data.to_csv(os.path.dirname(filename) + '/aug2_' + os.path.basename(filename)[0:-4] + '_aug2.csv', index=False)
 
-
+def re_save_data(filename):
+    '''Read data from file and compute lag1 autocorrelation and then save (original data, ar1)
+    fix value pad the first window size autocorrelation'''
+    print(filename)
+    save_name = os.path.dirname(filename) + '/re_save_' + os.path.basename(filename)[0:-4] + '_hori.csv'
+    data = read_data(filename)
+    new_data = data.T
+    np.savetxt(save_name, new_data, delimiter=',', comments='', fmt='%.4e')
 
 
 def read_data_save_one_csv(data_dir):
@@ -278,7 +287,7 @@ def load_and_save_data_to_npz(data_dir, pattern='Data*.csv', withlabel=True, ifn
         x: [num_samples, ]  ## int label
         '''
     #### Get data
-    files_wlabel = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the 
+    files_wlabel = find_files(data_dir, pattern=pattern, withlabel=withlabel )### traverse all the
     files, labels = np.array(files_wlabel)[:, 0], np.array(np.array(files_wlabel)[:, 1]).astype(np.int)
 
     datas = np.zeros([len(files), seq_len, width])
@@ -289,7 +298,7 @@ def load_and_save_data_to_npz(data_dir, pattern='Data*.csv', withlabel=True, ifn
         datas[ind, :, :] = data
 
     np.savez(data_dir + "/" + save_name, data=datas, label=np.array(labels))
-    
+
     return datas, np.array(labels)
 
 
@@ -351,31 +360,22 @@ def opp_slide2segment(data_x, data_y, ws, ss):
 def slide_and_segment(data_x, num_seg=100, window=128, stride=64):
     '''
     Param:
-        datax: array-like data shape (batch_size, seq_len, channel)
-        data_y: shape (num_seq, num_classes)
+        data_x: array-like data shape (batch_size, seq_len, channel)
         num_seg: number of segments you want from one seqeunce
-        window: int, number of frames to stack together to predict future
-        noverlap: int, how many frames overlap with last window
+        window: int, number of consecutive points to stack together 
     Return:
         expand_x : shape(batch_size*num_segment, window, channel)
-        expand_y : shape(num_seq*num_segment, num_classes)
         '''
     assert len(data_x.shape) == 3
-    #ipdb.set_trace()
-    #if ((r
-    
-        
     expand_data = np.zeros((data_x.shape[0], num_seg, window, data_x.shape[-1]))
-    #ipdb.set_trace()
+
     for ii in range(data_x.shape[0]):
-        
-        shape = (num_seg, window, data_x.shape[-1])      ## done change the num_seq
-        strides = (data_x.itemsize*stride*data_x.shape[-1], data_x.itemsize*data_x.shape[-1], data_x.itemsize)
+        shape = (num_seg, window, data_x.shape[-1])      ## for each sample you want to get num_seg out
+        strides = (data_x.itemsize*stride*data_x.shape[-1], data_x.itemsize*data_x.shape[-1], data_x.itemsize)   # strides in all dimensions
         expand_x = np.lib.stride_tricks.as_strided(data_x[ii, :, :], shape=shape, strides=strides)
         expand_data[ii, :, :, ] = expand_x
-    #ipdb.set_trace()
-    #expand_y = np.repeat(data_y,  num_seg, axis=0).reshape(-1, data_y.shape[1])
-    return expand_data.reshape(-1, window, data_x.shape[-1])#, expand_y
+
+    return expand_data.reshape(-1, window, data_x.shape[-1])
 
 
 def lag_ar(data, window=1024, lag=1) :
@@ -556,7 +556,7 @@ def plot_smooth_shadow_curve(datas, ifsmooth=False, hlines=[0.8, 0.85], ylim=[0,
             plt.plot(data, '*-', linewidth=2, color=colors[ind], label=labels[ind])
         for hline in hlines:
             plt.hlines(hline, 0, np.array(data).size, linestyle='--', colors='salmon',  linewidth=1.5)
-            
+
     plt.ylabel(ylabel)
     plt.xlabel(xlabel)
     plt.ylim(ylim)
@@ -580,21 +580,21 @@ def plot_test_samples(samples, true_labels, pred_labels, save_name='results/'):
     plt.savefig(save_name + 'samples_test.pdf', format = 'pdf')
     plt.close()
 
-       
+
 def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'):
     '''visualize fc layer activation given some inputs
-    param: 
+    param:
         sess: current session
         layer_name: the layer you want to visualize
         inputs: 2D array [batch_size, seq_len, width]
-        
+
     return:
         activations: activations from each layer'''
 
     ## get all the viariables with the layername
     with tf.variable_scope(layer_name, reuse=True):
         vars_list = tf.get_collection(tf.GraphKeys.TRAINABLE_VARIABLES, layer_name)
-    
+
     weights = []
     biases = []
     kernels = []
@@ -611,7 +611,7 @@ def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'
 
         w = tf.cast(weights[ii], tf.float64)
         b = tf.cast(biases[ii], tf.float64)
-    
+
         example = tf.placeholder(tf.float32, [None, inputs.shape[1], inputs.shape[2]])
         acti_mat = tf.nn.relu(tf.matmul(tf.cast(tf.transpose(example), tf.float64), weights) + bias)
         activation = sess.run(acti_mat,  feed_dict={example: inputs})
@@ -620,7 +620,7 @@ def visualize_fc_layer_activation(sess, layer_name, inputs, save_name='results/'
         plt.savefig(save_name + "fc_activation.png", format="png")
         plt.close()
         inputs = activation
-    
+
     acti_mat_all = []
     acti_mat = np.zeros((inputs.shape[0], bias.shape[0]))
 
@@ -645,11 +645,11 @@ def plot_train_samples(samples, true_labels, xlabel='label: 0', ylabel='value', 
     plt.close()
 
 def plot_BB_training_examples(samples, true_labels, save_name='results/'):
-    
+
     for ii in range(3):
         plt.figure()
         for ind in range(samples[ii, :, :].shape[-1]):
-        
+
             ax1 = plt.subplot(samples[ii, :, :].shape[-1], 1, ind+1)
             plt.plot(np.arange(samples[ii, :, ind].size)/ 512.0, samples[ii, :, ind], label="data_{}".format(ind+1))
             plt.ylabel("amplitude ")
@@ -669,13 +669,13 @@ def plotTSNE(data, labels, num_classes=2, n_components=3, title="t-SNE", target_
         label: 1d array, int labels'''
     from tsne import bh_sne
     from mpl_toolkits.mplot3d import Axes3D
-    
+
     data = data.astype(np.float64)
-    labels = labels.astype(np.int)    
+    labels = labels.astype(np.int)
     tsne_results = bh_sne(data, d=n_components)
-    
+
     #tsne_results = TSNE(n_components=3, random_state=99).fit_transform(data)
-    
+
     #colors =plt.cm.get_cmap("cool", num_classes)
     colors=['orchid', 'indigo', 'royalblue']
     #colors = np.random.choice(cmap, num_classes)
@@ -686,7 +686,7 @@ def plotTSNE(data, labels, num_classes=2, n_components=3, title="t-SNE", target_
         vis_y = tsne_results[:, 1]
         vis_z = tsne_results[:, 2]
         ipdb.set_trace()
-        ax = fig.add_subplot(111, projection='3d')        
+        ax = fig.add_subplot(111, projection='3d')
         for color, marker, i, target_name in zip(colors, markers, np.arange(num_classes), target_names):
             ax.scatter(tsne_results[labels == i, 0], tsne_results[labels == i, 1], tsne_results[labels == i, 2], color=color, alpha=.8, marker=marker, linewidth=3, label=target_name)
         plt.setp(ax.get_xticklabels(), visible = False)
@@ -729,11 +729,12 @@ def plot_1d_filter_in_grid(filters, save_name='/results/'):
         plt.plot(data[:, 0, 0, ii])
         plt.setp(ax.get_xticklabels(), visible = False)
         plt.setp(ax.get_yticklabels(), visible = False)
-        fig.subplots_adjust(hspace=0)
+        dydfias032122
+        
         fig.subplots_adjust(wspace=0)
     plt.savefig(save_name+'.eps', format='eps')
     plt.close()
-    
+
 
 def plot_PCA(data, labels, n_components=3, num_classes=2, colors = ['navy', 'turquoise'], target_names = ['non-focal', 'focal'], title='PCA', postfix='band_PSD'):
     from sklearn.decomposition import PCA
@@ -774,7 +775,7 @@ def plot_bar_chart():
     plt.xticks([r + barWidth for r in range(len(mean_test))], keys_new, rotation=0)
 
     for ind in range(len(mean_test)):
-        
+
         plt.text(r1[ind]+ 0.25*barWidth, mean_new[ind]+0.005, '{0:.3f}'.format(mean_new[ind]), size = 18)
 
 def plot_auc_curve(labels, predictions, save_name='results/'):
@@ -813,14 +814,14 @@ def put_kernels_on_grid(kernel, pad = 1, save_name='kernel', mode='imshow'):
                 if i == 1:
                     print('Who would enter a prime number of filters')
                 return (i, int(n / i))
-                
+
     (grid_Y, grid_X) = factorization(kernel.shape[3])
 
     print ('grid: %d = (%d, %d)' % (kernel.shape[3], grid_Y, grid_X))
 
     if mode == 'plot':
         pad = 0
-    
+
     x_min = np.min(kernel)
     x_max = np.max(kernel)
     kernel = (kernel - x_min) / (x_max - x_min)  ### normalize the kernel
@@ -871,7 +872,7 @@ def add_conved_image_to_summary(net, save_name='results/'):
     '''given the output of a con2d layer, visualize the convolution results
     Param:
         net: shape (batch_size, height, width, channels)'''
-    
+
     def factorization(n):
         for i in range(int(np.sqrt(float(n))), 0, -1):
             if n % i == 0:
@@ -928,7 +929,7 @@ def plot_fully_activation_with_ori(original_data, activation, label, epoch=0, Fs
     ### plot spectrogram
     ax1 = fig.add_subplot(3, 1, 2)
     spec = plt.specgram(original_data, NFFT=NFFT, Fs=Fs)
-    (Spec, f, t) = spec[0], spec[1], spec[2]             
+    (Spec, f, t) = spec[0], spec[1], spec[2]
     plt.title('Spectrogram of orginal signal')
     plt.xlabel('time / s')
     plt.ylabel('frequency')
@@ -975,10 +976,10 @@ def plot_conv_activation_with_ori(original_data, activation, label, epoch=0, Fs=
     plt.setp(ax.get_yticklabels(), visible = False)
     plt.xlabel('time / s')
     #### plot the acitivations
-    for row in range(grid_Y):                            
+    for row in range(grid_Y):
         for col in range(grid_X):
             ax = plt.subplot(grid_Y+1, grid_X, count+grid_X+1)
-            plt.plot(activation[:, 0, count])                               
+            plt.plot(activation[:, 0, count])
             plt.setp(ax.get_xticklabels(), visible = False)
             plt.setp(ax.get_yticklabels(), visible = False)
             plt.xlim([0, activation[:, 0, count].size])
@@ -989,26 +990,15 @@ def plot_conv_activation_with_ori(original_data, activation, label, epoch=0, Fs=
 ####################### Data munipulation##########################
 
 # #
-#if __name__ == "__main__":
- ##     #data_dir = "data/train_data"
- ##     # data_dir_test = "data/test_data"
- ##     #data_dir = 'data/test_files'
- ##     # # read_data_save_tfrecord(data_dir)
-    ## ddd = ["data/train_data", "data/test_data"]
-     ## ipdb.set_trace()
-     ## augment_data_with_ar1(filename)
-    ## for direc in ddd:
-    ##multiprocessing_func("data/train_data")
- ##     # get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
- ##     # multiprocessing_func(data_dir)
- ##     # read_from_tfrecord("data/test_files/test_files.tfrecords")
- ##     #read_tfrecord()
- ##     #read_data_save_one_csv(data_dir_test)
- ##     #filename = "data/train_data/train_data.csv"
- ##     #read_data(filename)
-    #data_dir = "data/Bonn_data/"
-    #multiprocessing_func(data_dir)
-    ##load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, num_classes=2)
+if __name__ == "__main__":
+    data_dirs = [ "data/Whole_data/validate_data"]
+
+    for data_dir in data_dirs:
+        multiprocessing_func(data_dir)
+     # get_Data(data_dir, data_dir_test, pattern='Data*.csv', withlabel=True)
+     # multiprocessing_func(data_dir)
+
+    #load_and_save_data(data_dir, pattern='Data*.csv', withlabel=True, num_classes=2)
 
 
 #def put_kernels_on_grid (kernel, grid_Y, grid_X, pad = 1):
@@ -1058,4 +1048,4 @@ def plot_conv_activation_with_ori(original_data, activation, label, epoch=0, Fs=
     #x7 = tf.transpose(x6, (3, 0, 1, 2))
 
     ## scale to [0, 255] and convert to uint8
-    #return tf.image.convert_image_dtype(x7, dtype = tf.uint8) 
+    #return tf.image.convert_image_dtype(x7, dtype = tf.uint8)

@@ -500,10 +500,10 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_size=filter_size[0],
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.leaky_relu
+            activation=None
         )
         net = tf.layers.batch_normalization(net)
-        #net = tf.nn.leaky_relu(net)
+        net = tf.nn.leaky_relu(net)
         #func.add_conved_image_to_summary(net)
         #activities[net.name] = net
         #ipdb.set_trace()
@@ -517,10 +517,10 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_size=filter_size[0],
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.leaky_relu
+            activation=None
         )
         net = tf.layers.batch_normalization(net)
-        #net = tf.nn.leaky_relu(net)
+        net = tf.nn.leaky_relu(net)
         #activities[net.name] = net
         #func.add_conved_image_to_summary(conv)
         #add_kernel_to_image_summary_with_scope(scope)
@@ -536,10 +536,10 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_size=filter_size[0],
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.leaky_relu
+            activation=None
         )
         net = tf.layers.batch_normalization(net)
-        #net = tf.nn.leaky_relu(net)
+        net = tf.nn.leaky_relu(net)
         #func.add_conved_image_to_summary(net)
         #activities[net.name] = net
         #func.add_conved_image_to_summary(conv)
@@ -553,10 +553,10 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_size=filter_size[0],
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.leaky_relu
+            activation=None
         )
         net = tf.layers.batch_normalization(net)
-        #net = tf.nn.leaky_relu(net)
+        net = tf.nn.leaky_relu(net)
         #func.add_conved_image_to_summary(net)
         #activities[net.name] = net
         #func.add_conved_image_to_summary(conv)
@@ -573,10 +573,10 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
             kernel_size=filter_size[1],    #[2, 2],  #
             padding='SAME',
             kernel_regularizer=regularizer,
-            activation=tf.nn.leaky_relu
+            activation=None
         )
         net = tf.layers.batch_normalization(net)
-        #net = tf.nn.leaky_relu(net)
+        net = tf.nn.leaky_relu(net)
         #func.add_conved_image_to_summary(net)
         #activities[net.name] = net
         #add_kernel_to_image_summary_with_scope(scope)
@@ -627,7 +627,7 @@ def CNN_Tutorial(x, output_channels=[32, 64, 128], seq_len=32, width=32, channel
     return logits, kernels, activities
 
 
-def CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=10240, width=2, channels=1, pool_size=[4, 1], strides=[4, 1], filter_size=[5, 1], num_att=3, num_classes=2, fc=[300], num_seg=5, att_dim=20, ifattnorm=True):
+def CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=10240, width=2, channels=1, pool_size=[4, 1], strides=[4, 1], filter_size=[5, 1], num_att=3, num_classes=2, fc=[150], att_dim=128, gird_height=5, gird_width=1, ifattnorm=True):
     ''' Network with attention is used together with segmenting original data into several segments.
     https://github.com/exelban/tensorflow-cifar-10/blob/master/include/model.py
     with attention module adapted from http://openaccess.thecvf.com/content_cvpr_2018/papers/Li_Diversity_Regularized_Spatiotemporal_CVPR_2018_paper.pdf
@@ -718,60 +718,73 @@ def CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=10240, width=
         print(scope.name + "shape", pool.shape.as_list())
         drop = tf.layers.dropout(pool, rate=0.25, name=scope.name)   ###0.25
 
-    ipdb.set_trace()
+    
     kernels = {}   #### implement attention 
     ## attention
     ## attention = att_w2 * tf.nn.relu(att_w1 * features_of_segment + att_b1) + att_b2
     ## D: the shape of flattened feature map, d: target dimension of the attention
-
+    ## grid: here 5 x 4, Height = 5, width = 1, original 8 x 4
+    K = num_att
     with tf.variable_scope('attention') as scope:
-        net = tf.reshape(drop, [-1, drop.shape[1]*drop.shape[2]*drop.shape[3] // num_seg, num_seg, 1])
-        print(scope.name + "shape", net.shape.as_list())  ##('attentionshape', [None, D=2048, L=5])
-        D = net.shape_as_list[1]
-        K = num_att
-        L = num_seg
-        e_att_1 = tf.layers.conv2d(inputs=net, filters=net.shape_as_list[-2], kernel_size=[5, 1], strides=[4, 1], activation=None, name='resp_1')  ##(-1, d, L, 1)
-        e_att_1 = tf.layers.batch_normalization(e_att_1)
-        e_att_1 = tf.nn.relu(e_att_1)
-
+        net = tf.reshape(drop, [-1, gird_height, gird_width, drop.shape[1]*drop.shape[2]*drop.shape[3] // gird_height*gird_width])  ## [None, 5, 1, 1971]
+        print(scope.name + "shape", net.shape.as_list())  ##('attentionshape', [None, L=5, 1, D=2048])
+        D = net.shape.as_list()[3]
         
-        e_att_1 = tf.reshape(e_att_1, [-1, e_att_1.shape_as_list[2], e_att_1.shape_as_list[1]])  ## (-1*L, d)
-        e_att_1 = tf.layers.dense(inputs=e_att_1, units=num_att, activation=None)
+        e_att_1 = tf.layers.conv2d(inputs=net, filters=64, kernel_size=[1, 1], strides=[1, 1], padding='valid', activation=None, name='attConv_1')  ##(-1, L, 1, 64)
         e_att_1 = tf.layers.batch_normalization(e_att_1)
-        e_att_1 = tf.nn.relu(e_att_1)  ## (-1*L, d)
-        e_att_1 = tf.reshape(e_att_1, [-1, num_att, num_seg, 1])  # (-1, K, L, 1)
-        s_att = tf.nn.softmax(e_att_1)  ## (-1, K, L)
-        s_att = tf.reshape(s_att, [-1, s_att.shape_as_list[1], 1, s_att.shape_as_list[2]])  #(-1, K, 1, L)
+        e_att_1 = tf.nn.relu(e_att_1)#(-1, L, 1, 64)
+        print("e_att 1 shape: ", e_att_1.shape.as_list())
+        e_att_1 = tf.layers.conv2d(inputs=e_att_1, filters=K, kernel_size=[1, 1], strides=[1, 1], padding='valid', activation=None, name='attConv_2')  ##(-1, L, 1, K)
+        e_att_1 = tf.layers.batch_normalization(e_att_1)
+        e_att_1 = tf.nn.relu(e_att_1)#(-1, L, 1, K)
+        print("e_att 2 shape: ", e_att_1.shape.as_list())
+        e_att_1 = tf.reshape(e_att_1, [-1, num_att, gird_height*gird_width])  # (-1, K, L)
+        ## get attention
+        s_att = tf.nn.softmax(e_att_1, name='s_att')  ## (-1, K, L)
+        print("s_att shape: ", s_att.shape.as_list())
+        activities[s_att.name] = s_att
+        
+        # diversity regularization
         diversity = s_att
-        ## Repeat elements to get shape (-1, K, D, L)
-        s_att_repeat = tf.tile(s_att, [1, 1, D, 1])   ##(-1, K, D, L)
+        tf.summary.histogram('attention', s_att)
         
-        net = tf.reshape(net, [-1, 1, D, num_seg])   ##shape [-1, 1, D, L]
-        ## Repeat net to get shape [-1, K, D, L]
-        net_repeat = tf.tile(net, [1, K, 1, 1])        ##[-1, K, D, L]
+        ## Multiple spatial attention
+        s_att = tf.reshape(s_att, [-1, num_att, 1, gird_height, gird_width])  #(-1, K, 1, h, w) hxw=L
+        s_att_repeat = tf.tile(s_att, [1, 1, D, 1, 1])   ##(-1, K, D, h, w)
 
+        print("s_att shape: ", s_att_repeat.shape.as_list())
+        net = tf.reshape(net, [-1, 1, D, gird_height, gird_width])   ##shape [-1, 1, D, L]
+        ## Repeat net to get shape [-1, K, D, h, w]
+        net_repeat = tf.tile(net, [1, K, 1, 1, 1])        ##[-1, K, D, h, w]
+        print("net_repeat shape: ", net_repeat.shape.as_list())
         ### Attention gated feature
-        net = net_repeat * e_att_repeat
-        net = tf.reshape(net, [-1, D, num_seg]) ##[-1*K, D, L]
-        net = tf.layers.average_pooling2d(net, net.shape.as_list[2]) * net.shape.as_list[2]  ##[-1*K, D]
+        net = net_repeat * s_att_repeat      #[-1, K, D, h, w]
+        print("attention weighted features: ", net.shape.as_list())
+        net = tf.reshape(net, [-1, D, gird_height, gird_width]) ##[-1*K, D, h, w]
+        #net = tf.transpose(net, [0, 2, 3, 1])
+        print("before average: ", net.shape.as_list())
+        net = tf.transpose(net, [0, 2, 3, 1])   #[-1*K, h, w, D]
+        #ipdb.set_trace()
+        net = tf.layers.average_pooling2d(net, [net.shape.as_list()[1], net.shape.as_list()[2]], strides=1) * net.shape.as_list()[1] * net.shape.as_list()[2] ##[-1*K, 1, 1, D]
+        net = tf.transpose(net, [0, 3, 1, 2])   #[-1*K, D, 1, 1]
+        print("averaged: ", net.shape.as_list())
         net = tf.reshape(net, [-1, D])  ##[-1*K, D]
 
         net = tf.layers.dense(inputs=net, units=att_dim, activation=None)   #[-1*K, att_dim]
-
         net = tf.reshape(net, [-1, K, att_dim])##[-1, K, att_dim]
                
         if ifattnorm:
             net = tf.norm(net, ord=2, axis=2, keep_dims=True)  ##[-1, K, 1]
-            net = tf.tile(net, [-1, 1, att_dim])  #[-1, K, att_dim]
+            net = tf.tile(net, [1, 1, att_dim])  #[-1, K, att_dim]
             
     with tf.variable_scope('fc_out') as scope:
         ### after attention gating, pass to FC layer
-        net = tf.reshape(net, [-1, net.shape_as_list[1]*net.shape_as_list[2]])
-        print(scope.name + "shape", net.shape.as_list())
+        net = tf.reshape(net, [-1, net.shape.as_list()[1]*net.shape.as_list()[2]])
+        print("flat shape", net.shape.as_list())
         for ind, units in enumerate(fc):
             net = tf.layers.dense(inputs=net, units=units, kernel_regularizer=regularizer, activation=tf.nn.leaky_relu)
-            #activities[net.name] = net
-            net = tf.layers.dropout(net, rate=0.5)
+            activities[net.name] = net
+            #net = tf.layers.dropout(net, rate=0.5)
             
             #print(scope.name + "shape", net.shape.as_list())
         ##tf.summary.histogram("dense_out", net)
@@ -794,7 +807,7 @@ def CNN_Tutorial_attention(x, output_channels=[8, 16, 32], seq_len=10240, width=
                 kernels[var.name] = var
             
        
-    return logits, kernels, activities
+    return logits, kernels, activities, diversity
 
 
 
